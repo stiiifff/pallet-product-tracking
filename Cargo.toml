@@ -1,12 +1,12 @@
 [package]
 authors = ['Substrate DevHub <https://github.com/substrate-developer-hub>']
-description = 'Substrate FRAME pallet template'
+description = 'Substrate Enterprise Sample - Product Tracking example pallet'
 edition = '2018'
 homepage = 'https://substrate.io'
 license = 'Unlicense'
-name = 'pallet-template'
+name = 'pallet-product-tracking'
 repository = 'https://github.com/paritytech/substrate/'
-version = '2.0.0-alpha.8'
+version = '0.0.1'
 
 [package.metadata.docs.rs]
 targets = ['x86_64-unknown-linux-gnu']
@@ -28,6 +28,11 @@ default-features = false
 git = 'https://github.com/paritytech/substrate.git'
 tag = 'v2.0.0-alpha.8'
 version = '2.0.0-alpha.8'
+
+[dependencies.fixed]
+default-features = false
+git = "https://github.com/encointer/substrate-fixed"
+package = "substrate-fixed"
 
 [dev-dependencies.sp-core]
 default-features = false
