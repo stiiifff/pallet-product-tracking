@@ -1,11 +1,12 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use codec::{Decode, Encode};
-use fixed::types::I16F16;
+// use fixed::types::I16F16;
 use frame_support::{
     decl_error, decl_event, decl_module, decl_storage, dispatch, sp_runtime::RuntimeDebug,
 };
 use frame_system::{self as system, ensure_signed};
+use product_registry::ProductId;
 
 #[cfg(test)]
 mod mock;
@@ -13,19 +14,21 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+// Custom types
+pub type EventType = Vec<u8>;
+
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
-pub struct EventRecord {
-    event_type: Vec<u8>,
-    product_id: Vec<u8>,
-    org_id: Vec<u8>,
-    timestamp: Vec<u8>,
+pub struct EventRecord<Moment> {
+    event: EventType,
+    products: Vec<ProductId>,
+    timestamp: Moment,
     location: Vec<u8>,
     readings: Vec<u8>,
 }
 
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
 pub struct ReadPoint {
-    pub latitude: I16F16,
+    pub latitude: Vec<u8>,
 }
 
 pub trait Trait: system::Trait {
