@@ -3,7 +3,7 @@
 use codec::{Decode, Encode};
 // use fixed::types::I16F16;
 use frame_support::{
-    decl_error, decl_event, decl_module, decl_storage, dispatch, sp_runtime::RuntimeDebug,
+    decl_error, decl_event, decl_module, decl_storage, dispatch, ensure, sp_runtime::RuntimeDebug,
 };
 use frame_system::{self as system, ensure_signed};
 use product_registry::ProductId;
@@ -15,28 +15,56 @@ mod mock;
 mod tests;
 
 // Custom types
+pub type EventId = Vec<u8>;
 pub type EventType = Vec<u8>;
+pub type ShipmentId = Vec<u8>;
+pub type DeviceId = Vec<u8>;
+pub type ReadingType = Vec<u8>;
+pub type ReadingValue = Vec<u8>;
+
+#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
+pub struct Shipment<AccountId, Moment> {
+    id: ShipmentId,
+    owner: AccountId,
+    products: Vec<ProductId>,
+    registered: Moment,
+}
 
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
 pub struct EventRecord<Moment> {
-    event: EventType,
-    products: Vec<ProductId>,
+    event_id: EventId,
+    event_type: EventType,
+    shipment_id: ShipmentId,
+    location: Option<ReadPoint>,
+    readings: Vec<Reading<Moment>>,
     timestamp: Moment,
-    location: Vec<u8>,
-    readings: Vec<u8>,
 }
 
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
 pub struct ReadPoint {
-    pub latitude: Vec<u8>,
+    latitude: Vec<u8>,
+    longitude: Vec<u8>,
 }
 
-pub trait Trait: system::Trait {
+#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
+pub struct Reading<Moment> {
+    device_id: DeviceId,
+    reading_type: ReadingType,
+    timestamp: Moment,
+    value: ReadingValue,
+}
+
+pub trait Trait: system::Trait + timestamp::Trait {
     type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
 }
 
 decl_storage! {
     trait Store for Module<T: Trait> as TemplateModule {
+        pub EventCount: u64;
+        pub AllEvents: map hasher(blake2_128_concat) u64 => Option<EventRecord<T::Moment>>;
+        pub EventIndices get(fn event_by_id): map hasher(blake2_128_concat) EventId => Option<u64>;
+        pub Shipments get(fn shipment_by_id): map hasher(blake2_128_concat) ShipmentId => Option<Shipment<T::AccountId, T::Moment>>;
+        pub EventsOfShipment get(fn events_by_shipment): map hasher(blake2_128_concat) ShipmentId => Vec<u64>;
     }
 }
 
@@ -45,12 +73,15 @@ decl_event!(
     where
         AccountId = <T as system::Trait>::AccountId,
     {
-        EventTracked(AccountId),
+        EventRecorded(AccountId),
     }
 );
 
 decl_error! {
     pub enum Error for Module<T: Trait> {
+        EventRecordExists,
+        EventRecordMaxExceeded,
+        ShipmentIdUnknown
     }
 }
 
@@ -59,9 +90,34 @@ decl_module! {
         type Error = Error<T>;
         fn deposit_event() = default;
 
+        // pub fn register_shipment()
+
         #[weight = 10_000]
-        pub fn record_event(origin, event: EventRecord) -> dispatch::DispatchResult {
+        pub fn record_event(origin, event: EventRecord<T::Moment>) -> dispatch::DispatchResult {
             let who = ensure_signed(origin)?;
+            // Validate extrinsic data (no storage access)
+            // ...
+
+            // Storage checks
+            // --------------
+            // Get event count (1 DB read)
+            let event_count = EventCount::get();
+            let event_idx = event_count.checked_add(1).ok_or(Error::<T>::EventRecordMaxExceeded)?;
+            // Check event doesn't exist yet (1 DB read)
+            let event_key = EventIndices::hashed_key_for(&event.event_id);
+            ensure!(!EventIndices::contains_key(&event_key), Error::<T>::EventRecordExists);
+            // Check shipment has been registered (1 DB read)
+            let shipment_key = EventsOfShipment::hashed_key_for(&event.shipment_id);
+            ensure!(<Shipments<T>>::contains_key(&shipment_key), Error::<T>::ShipmentIdUnknown);
+
+            // Storage writes
+            // --------------
+            EventCount::put(event_idx);
+            <AllEvents<T>>::insert(event_idx, event);
+            EventIndices::insert(event_key, event_idx);
+            EventsOfShipment::append(shipment_key, event_idx);
+
+            Self::deposit_event(RawEvent::EventRecorded(who));
 
             Ok(())
         }
