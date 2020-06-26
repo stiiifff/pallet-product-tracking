@@ -14,6 +14,11 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+// General constraints to limit data size
+// Note: these could also be passed as trait config parameters
+pub const SHIPMENT_ID_MAX_LENGTH: usize = 20;
+pub const SHIPMENT_MAX_PRODUCTS: usize = 10;
+
 // Custom types
 pub type EventId = Vec<u8>;
 pub type EventType = Vec<u8>;
@@ -74,6 +79,7 @@ decl_event!(
         AccountId = <T as system::Trait>::AccountId,
     {
         EventRecorded(AccountId),
+        ShipmentRegistered(AccountId, ShipmentId, AccountId),
     }
 );
 
@@ -81,7 +87,11 @@ decl_error! {
     pub enum Error for Module<T: Trait> {
         EventRecordExists,
         EventRecordMaxExceeded,
-        ShipmentIdUnknown
+        ShipmentIdExists,
+        ShipmentIdMissing,
+        ShipmentIdTooLong,
+        ShipmentIdUnknown,
+        ShipmentTooManyProducts
     }
 }
 
@@ -97,22 +107,27 @@ decl_module! {
             // TODO: assuming owner is a DID representing an organization,
             //       validate tx sender is owner or delegate of organization.
 
-            // Validate product IDs
-            // Self::validate_product_id(&id)?;
+            // Validate shipment ID
+            Self::validate_shipment_id(&id)?;
 
-            // Create a product instance
-            // let product = Self::new_product()
-            //     .identified_by(id.clone())
-            //     .owned_by(owner.clone())
-            //     .registered_on(<timestamp::Module<T>>::now())
-            //     .with_props(props)
-            //     .build();
+            // Validate shipment products
+            Self::validate_shipment_products(&products)?;
 
-            // // Add product & ownerOf (2 DB writes)
-            // <Products<T>>::insert(&id, product);
-            // <OwnerOf<T>>::insert(&id, &owner);
+            // Check shipment doesn't exist yet (1 DB read)
+            Self::validate_new_shipment(&id)?;
 
-            // Self::deposit_event(RawEvent::ProductRegistered(who, id, owner));
+            // Create a shipment instance
+            let shipment = Self::new_shipment()
+                .identified_by(id.clone())
+                .owned_by(owner.clone())
+                .registered_on(<timestamp::Module<T>>::now())
+                .with_products(products)
+                .build();
+
+            // Add shipment (1 DB write)
+            <Shipments<T>>::insert(&id, shipment);
+
+            Self::deposit_event(RawEvent::ShipmentRegistered(who, id, owner));
 
             Ok(())
         }
@@ -146,6 +161,51 @@ decl_module! {
 
             Ok(())
         }
+    }
+}
+
+impl<T: Trait> Module<T> {
+    // Helper methods
+    fn new_shipment() -> ShipmentBuilder<T::AccountId, T::Moment> {
+        ShipmentBuilder::<T::AccountId, T::Moment>::default()
+    }
+
+    pub fn validate_shipment_id(id: &[u8]) -> Result<(), Error<T>> {
+        // Basic shipment ID validation
+        ensure!(!id.is_empty(), Error::<T>::ShipmentIdMissing);
+        ensure!(
+            id.len() <= SHIPMENT_ID_MAX_LENGTH,
+            Error::<T>::ShipmentIdTooLong
+        );
+        Ok(())
+    }
+
+    pub fn validate_new_shipment(id: &[u8]) -> Result<(), Error<T>> {
+        // Product existence check
+        ensure!(
+            !<Shipments<T>>::contains_key(id),
+            Error::<T>::ShipmentIdExists
+        );
+        Ok(())
+    }
+
+    pub fn validate_shipment_products(props: &Vec<ProductId>) -> Result<(), Error<T>> {
+        ensure!(
+            props.len() <= SHIPMENT_MAX_PRODUCTS,
+            Error::<T>::ShipmentTooManyProducts,
+        );
+        // TODO: Validate products IDs
+        // for prop in props {
+        // 	ensure!(
+        // 		prop.name().len() <= PRODUCT_PROP_NAME_MAX_LENGTH,
+        // 		Error::<T>::ProductInvalidPropName
+        // 	);
+        // 	ensure!(
+        // 		prop.value().len() <= PRODUCT_PROP_VALUE_MAX_LENGTH,
+        // 		Error::<T>::ProductInvalidPropValue
+        // 	);
+        // }
+        Ok(())
     }
 }
 
