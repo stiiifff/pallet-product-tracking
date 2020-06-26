@@ -90,7 +90,32 @@ decl_module! {
         type Error = Error<T>;
         fn deposit_event() = default;
 
-        // pub fn register_shipment()
+        #[weight = 10_000]
+        pub fn register_shipment(origin, id: ShipmentId, owner: T::AccountId, products: Vec<ProductId>) -> dispatch::DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // TODO: assuming owner is a DID representing an organization,
+            //       validate tx sender is owner or delegate of organization.
+
+            // Validate product IDs
+            // Self::validate_product_id(&id)?;
+
+            // Create a product instance
+            // let product = Self::new_product()
+            //     .identified_by(id.clone())
+            //     .owned_by(owner.clone())
+            //     .registered_on(<timestamp::Module<T>>::now())
+            //     .with_props(props)
+            //     .build();
+
+            // // Add product & ownerOf (2 DB writes)
+            // <Products<T>>::insert(&id, product);
+            // <OwnerOf<T>>::insert(&id, &owner);
+
+            // Self::deposit_event(RawEvent::ProductRegistered(who, id, owner));
+
+            Ok(())
+        }
 
         #[weight = 10_000]
         pub fn record_event(origin, event: EventRecord<T::Moment>) -> dispatch::DispatchResult {
@@ -120,6 +145,53 @@ decl_module! {
             Self::deposit_event(RawEvent::EventRecorded(who));
 
             Ok(())
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct ShipmentBuilder<AccountId, Moment>
+where
+    AccountId: Default,
+    Moment: Default,
+{
+    id: ShipmentId,
+    owner: AccountId,
+    products: Vec<ProductId>,
+    registered: Moment,
+}
+
+impl<AccountId, Moment> ShipmentBuilder<AccountId, Moment>
+where
+    AccountId: Default,
+    Moment: Default,
+{
+    pub fn identified_by(mut self, id: ShipmentId) -> Self {
+        self.id = id;
+        self
+    }
+
+    pub fn owned_by(mut self, owner: AccountId) -> Self {
+        self.owner = owner;
+        self
+    }
+
+    pub fn with_products(mut self, products: Vec<ProductId>) -> Self {
+        self.products = products;
+        self
+    }
+
+    pub fn registered_on(mut self, registered: Moment) -> Self {
+        self.registered = registered;
+        self
+    }
+
+    pub fn build(self) -> Shipment<AccountId, Moment> {
+        Shipment::<AccountId, Moment> {
+            id: self.id,
+            owner: self.owner,
+            products: self.products,
+            registered: self.registered,
         }
     }
 }
