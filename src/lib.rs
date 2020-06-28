@@ -64,7 +64,7 @@ pub trait Trait: system::Trait + timestamp::Trait {
 }
 
 decl_storage! {
-    trait Store for Module<T: Trait> as TemplateModule {
+    trait Store for Module<T: Trait> as ProductTracking {
         pub EventCount: u64;
         pub AllEvents: map hasher(blake2_128_concat) u64 => Option<EventRecord<T::Moment>>;
         pub EventIndices get(fn event_by_id): map hasher(blake2_128_concat) EventId => Option<u64>;
