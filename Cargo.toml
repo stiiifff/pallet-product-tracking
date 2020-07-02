@@ -23,9 +23,10 @@ git = 'https://github.com/paritytech/substrate.git'
 tag = 'v2.0.0-rc3'
 version = '2.0.0-rc3'
 
-[dependencies.frame-system]
+[dependencies.system]
 default-features = false
 git = 'https://github.com/paritytech/substrate.git'
+package = 'frame-system'
 tag = 'v2.0.0-rc3'
 version = '2.0.0-rc3'
 
@@ -38,9 +39,9 @@ version = '2.0.0-rc3'
 default-features = false
 git = 'https://github.com/stiiifff/pallet-product-registry'
 package = 'pallet-product-registry'
-# version = '0.0.1'
+version = '0.0.1'
 
-[dev-dependencies.sp-core]
+[dependencies.sp-core]
 default-features = false
 git = 'https://github.com/paritytech/substrate.git'
 tag = 'v2.0.0-rc3'
@@ -49,6 +50,12 @@ version = '2.0.0-rc3'
 [dev-dependencies.sp-io]
 default-features = false
 git = 'https://github.com/paritytech/substrate.git'
+tag = 'v2.0.0-rc3'
+version = '2.0.0-rc3'
+
+[dependencies.sp-std]
+git = 'https://github.com/paritytech/substrate.git'
+default-features = false
 tag = 'v2.0.0-rc3'
 version = '2.0.0-rc3'
 
@@ -70,7 +77,7 @@ default = ['std']
 std = [
     'codec/std',
     'frame-support/std',
-    'frame-system/std',
+    'system/std',
     'timestamp/std',
     'product-registry/std'
 ]

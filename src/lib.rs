@@ -1,12 +1,12 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use codec::{Decode, Encode};
-// use fixed::types::I16F16;
 use frame_support::{
     decl_error, decl_event, decl_module, decl_storage, dispatch, ensure, sp_runtime::RuntimeDebug,
 };
-use frame_system::{self as system, ensure_signed};
 use product_registry::ProductId;
+use sp_std::{prelude::*, vec::Vec};
+use system::{self as system, ensure_signed};
 
 #[cfg(test)]
 mod mock;
@@ -21,8 +21,10 @@ pub const SHIPMENT_MAX_PRODUCTS: usize = 10;
 
 // Custom types
 pub type EventId = Vec<u8>;
+pub type EventIndex = u64;
 pub type EventType = Vec<u8>;
 pub type ShipmentId = Vec<u8>;
+pub type ShipmentIndex = u64;
 pub type DeviceId = Vec<u8>;
 pub type ReadingType = Vec<u8>;
 pub type ReadingValue = Vec<u8>;
@@ -31,8 +33,8 @@ pub type ReadingValue = Vec<u8>;
 pub struct Shipment<AccountId, Moment> {
     id: ShipmentId,
     owner: AccountId,
-    products: Vec<ProductId>,
     registered: Moment,
+    //TODO: we probably need a shipment status
 }
 
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
@@ -47,6 +49,7 @@ pub struct EventRecord<Moment> {
 
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
 pub struct ReadPoint {
+    //TODO: these should use fixed-point numbers
     latitude: Vec<u8>,
     longitude: Vec<u8>,
 }
@@ -65,11 +68,15 @@ pub trait Trait: system::Trait + timestamp::Trait {
 
 decl_storage! {
     trait Store for Module<T: Trait> as ProductTracking {
+        pub ShipmentCount: u64;
+        pub Shipments: map hasher(twox_64_concat) ShipmentIndex => Option<Shipment<T::AccountId, T::Moment>>;
+        pub ShipmentIndices get(fn shipment_by_id): map hasher(blake2_128_concat) ShipmentId => Option<ShipmentIndex>;
+        pub ShipmentsOfOrganization: map hasher(blake2_128_concat) T::AccountId => Vec<ShipmentIndex>;
+
         pub EventCount: u64;
-        pub AllEvents: map hasher(blake2_128_concat) u64 => Option<EventRecord<T::Moment>>;
-        pub EventIndices get(fn event_by_id): map hasher(blake2_128_concat) EventId => Option<u64>;
-        pub Shipments get(fn shipment_by_id): map hasher(blake2_128_concat) ShipmentId => Option<Shipment<T::AccountId, T::Moment>>;
-        pub EventsOfShipment get(fn events_by_shipment): map hasher(blake2_128_concat) ShipmentId => Vec<u64>;
+        pub AllEvents: map hasher(blake2_128_concat) EventIndex => Option<EventRecord<T::Moment>>;
+        pub EventIndices get(fn event_by_id): map hasher(blake2_128_concat) EventId => Option<EventIndex>;
+        pub EventsOfShipment get(fn events_by_shipment): map hasher(blake2_128_concat) ShipmentId => Vec<EventIndex>;
     }
 }
 
@@ -78,19 +85,21 @@ decl_event!(
     where
         AccountId = <T as system::Trait>::AccountId,
     {
-        EventRecorded(AccountId),
+        EventRecorded(AccountId, EventId, ShipmentId),
         ShipmentRegistered(AccountId, ShipmentId, AccountId),
     }
 );
 
 decl_error! {
     pub enum Error for Module<T: Trait> {
+        //TODO: Too granular ?
         EventRecordExists,
         EventRecordMaxExceeded,
         ShipmentIdExists,
         ShipmentIdMissing,
         ShipmentIdTooLong,
         ShipmentIdUnknown,
+        ShipmentMaxExceeded,
         ShipmentTooManyProducts
     }
 }
@@ -116,6 +125,12 @@ decl_module! {
             // Check shipment doesn't exist yet (1 DB read)
             Self::validate_new_shipment(&id)?;
 
+            // Storage checks
+            // --------------
+            // Get shipment count (1 DB read)
+            let shipment_count = ShipmentCount::get();
+            let shipment_idx = shipment_count.checked_add(1).ok_or(Error::<T>::ShipmentMaxExceeded)?;
+
             // Create a shipment instance
             let shipment = Self::new_shipment()
                 .identified_by(id.clone())
@@ -124,8 +139,13 @@ decl_module! {
                 .with_products(products)
                 .build();
 
+            // Storage writes
+            // --------------
             // Add shipment (1 DB write)
-            <Shipments<T>>::insert(&id, shipment);
+            ShipmentCount::put(shipment_idx);
+            <Shipments<T>>::insert(shipment_idx, shipment);
+            ShipmentIndices::insert(&id, shipment_idx);
+            <ShipmentsOfOrganization<T>>::append(&owner, shipment_idx);
 
             Self::deposit_event(RawEvent::ShipmentRegistered(who, id, owner));
 
@@ -136,7 +156,10 @@ decl_module! {
         pub fn record_event(origin, event: EventRecord<T::Moment>) -> dispatch::DispatchResult {
             let who = ensure_signed(origin)?;
             // Validate extrinsic data (no storage access)
-            // ...
+            // -----------------------
+            // Validate shipment ID
+            Self::validate_shipment_id(&event.shipment_id)?;
+            let shipment_id = event.shipment_id.clone();
 
             // Storage checks
             // --------------
@@ -146,9 +169,10 @@ decl_module! {
             // Check event doesn't exist yet (1 DB read)
             let event_key = EventIndices::hashed_key_for(&event.event_id);
             ensure!(!EventIndices::contains_key(&event_key), Error::<T>::EventRecordExists);
+            let event_id = event.event_id.clone();
             // Check shipment has been registered (1 DB read)
             let shipment_key = EventsOfShipment::hashed_key_for(&event.shipment_id);
-            ensure!(<Shipments<T>>::contains_key(&shipment_key), Error::<T>::ShipmentIdUnknown);
+            ensure!(ShipmentIndices::contains_key(&shipment_key), Error::<T>::ShipmentIdUnknown);
 
             // Storage writes
             // --------------
@@ -157,7 +181,7 @@ decl_module! {
             EventIndices::insert(event_key, event_idx);
             EventsOfShipment::append(shipment_key, event_idx);
 
-            Self::deposit_event(RawEvent::EventRecorded(who));
+            Self::deposit_event(RawEvent::EventRecorded(who, event_id, shipment_id));
 
             Ok(())
         }
@@ -183,7 +207,7 @@ impl<T: Trait> Module<T> {
     pub fn validate_new_shipment(id: &[u8]) -> Result<(), Error<T>> {
         // Product existence check
         ensure!(
-            !<Shipments<T>>::contains_key(id),
+            !ShipmentIndices::contains_key(id),
             Error::<T>::ShipmentIdExists
         );
         Ok(())
@@ -250,7 +274,6 @@ where
         Shipment::<AccountId, Moment> {
             id: self.id,
             owner: self.owner,
-            products: self.products,
             registered: self.registered,
         }
     }

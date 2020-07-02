@@ -2,7 +2,6 @@
 
 use crate::{Module, Trait};
 use frame_support::{impl_outer_origin, parameter_types, weights::Weight};
-use frame_system as system;
 use sp_core::{sr25519, Pair, H256};
 use sp_runtime::{
     testing::Header,
