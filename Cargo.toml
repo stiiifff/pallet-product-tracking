@@ -8,6 +8,9 @@ homepage = 'https://substrate.dev'
 repository = 'https://github.com/paritytech/substrate/'
 license = 'Unlicense'
 
+[package.metadata.docs.rs]
+targets = ['x86_64-unknown-linux-gnu']
+
 [dependencies.codec]
 default-features = false
 features = ['derive']
@@ -23,10 +26,24 @@ version = '2.0.0-rc3'
 [dependencies.frame-system]
 default-features = false
 git = 'https://github.com/paritytech/substrate.git'
+package = 'frame-system'
 tag = 'v2.0.0-rc3'
 version = '2.0.0-rc3'
 
-[dev-dependencies.sp-core]
+[dependencies.fixed]
+default-features = false
+git = "https://github.com/encointer/substrate-fixed"
+package = "substrate-fixed"
+tag = "v0.5.4+sub_v0.1"
+version = "0.5.4"
+
+[dependencies.product-registry]
+default-features = false
+git = 'https://github.com/stiiifff/pallet-product-registry'
+package = 'pallet-product-registry'
+version = '2.0.0-rc3'
+
+[dependencies.sp-core]
 default-features = false
 git = 'https://github.com/paritytech/substrate.git'
 tag = 'v2.0.0-rc3'
@@ -44,10 +61,24 @@ git = 'https://github.com/paritytech/substrate.git'
 tag = 'v2.0.0-rc3'
 version = '2.0.0-rc3'
 
+[dependencies.timestamp]
+default_features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'pallet-timestamp'
+tag = 'v2.0.0-rc3'
+version = '2.0.0-rc3'
+
+[dev-dependencies.hex]
+default_features = false
+package = 'hex'
+version = '0.4.2'
+
 [features]
 default = ['std']
 std = [
-	'codec/std',
-	'frame-support/std',
-	'frame-system/std',
+    'codec/std',
+    'frame-support/std',
+    'frame-system/std',
+    'timestamp/std',
+    'product-registry/std'
 ]
