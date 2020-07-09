@@ -129,7 +129,7 @@ fn register_shipment_with_invalid_sender() {
     new_test_ext().execute_with(|| {
         assert_noop!(
             ProductTracking::register_shipment(
-                Origin::NONE,
+                Origin::none(),
                 TEST_SHIPMENT_ID.as_bytes().to_owned(),
                 account_key(TEST_ORGANIZATION),
                 vec!()
@@ -229,7 +229,7 @@ fn record_event_with_invalid_sender() {
 
         assert_noop!(
             ProductTracking::record_event(
-                Origin::NONE,
+                Origin::none(),
                 ShippingEvent {
                     id: TEST_SHIPPING_EVENT_ID.as_bytes().to_owned(),
                     event_type: ShippingEventType::ShipmentPickup,
