@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::{mock::*, Error};
-use fixed::types::U16F16;
+use fixed::types::I16F16;
 use frame_support::{assert_noop, assert_ok, dispatch};
 
 pub fn store_test_shipment<T: Trait>(
@@ -585,13 +585,88 @@ fn record_event_for_sensor_reading() {
             event_type: ShippingEventType::SensorReading,
             shipment_id: shipment_id.clone(),
             location: Some(ReadPoint {
-                latitude: U16F16::from_num(52.4941126),
-                longitude: U16F16::from_num(13.4355606),
+                latitude: I16F16::from_num(52.4941126),
+                longitude: I16F16::from_num(13.4355606),
             }),
             readings: vec![Reading {
                 device_id: "14d453ea4bdf46bc8042".as_bytes().to_owned(),
                 reading_type: ReadingType::Temperature,
-                value: U16F16::from_num(20.123),
+                value: I16F16::from_num(20.123),
+                timestamp: now,
+            }],
+            timestamp: now,
+        };
+        assert_ok!(ProductTracking::record_event(
+            Origin::signed(account_key(TEST_SENDER)),
+            event.clone()
+        ));
+
+        // Storage is correctly updated
+        assert_eq!(EventCount::get(), 2);
+        assert_eq!(EventIndices::get(&event_id), Some(2));
+        assert_eq!(AllEvents::<Test>::get(2), Some(event));
+        assert_eq!(EventsOfShipment::get(&shipment_id), vec![1, 2]);
+
+        // Shipment's status should still be 'InTransit'
+        assert_eq!(
+            ProductTracking::shipment_by_id(&shipment_id),
+            Some(Shipment {
+                id: shipment_id.clone(),
+                owner: owner,
+                status: ShipmentStatus::InTransit,
+                products: vec![TEST_PRODUCT_ID.as_bytes().to_owned()],
+                registered: now,
+                delivered: None
+            })
+        );
+
+        // Event is raised
+        assert!(System::events().iter().any(|er| er.event
+            == TestEvent::product_tracking(RawEvent::ShippingEventRecorded(
+                account_key(TEST_SENDER),
+                event_id.clone(),
+                shipment_id.clone(),
+                ShippingEventType::SensorReading
+            ))));
+    })
+}
+
+#[test]
+fn record_event_for_sensor_reading_with_negative_latlon() {
+    new_test_ext().execute_with(|| {
+        let owner = account_key(TEST_ORGANIZATION);
+        let event_id = hex::decode(TEST_SHIPPING_EVENT_ID).unwrap();
+        let shipment_id = TEST_SHIPMENT_ID.as_bytes().to_owned();
+        let now = 42;
+
+        // Store shipment w/ InTransit status
+        store_test_shipment::<Test>(
+            shipment_id.clone(),
+            owner,
+            ShipmentStatus::InTransit,
+            vec![TEST_PRODUCT_ID.as_bytes().to_owned()],
+            now,
+        );
+
+        store_test_event::<Test>(
+            hex::decode("88356e4576444cae8c78").unwrap(),
+            shipment_id.clone(),
+        );
+
+        // Dispatchable call succeeds
+        let event = ShippingEvent {
+            id: event_id.clone(),
+            event_type: ShippingEventType::SensorReading,
+            shipment_id: shipment_id.clone(),
+            location: Some(ReadPoint {
+                // Rio de Janeiro, Brazil
+                latitude: I16F16::from_num(-22.9466369),
+                longitude: I16F16::from_num(-43.233472),
+            }),
+            readings: vec![Reading {
+                device_id: "14d453ea4bdf46bc8042".as_bytes().to_owned(),
+                reading_type: ReadingType::Temperature,
+                value: I16F16::from_num(20.123),
                 timestamp: now,
             }],
             timestamp: now,

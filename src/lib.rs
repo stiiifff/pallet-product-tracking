@@ -2,7 +2,7 @@
 
 use codec::{alloc::string::ToString, Decode, Encode};
 use core::fmt;
-use fixed::types::U16F16;
+use fixed::types::I16F16;
 use frame_support::{
     debug, decl_error, decl_event, decl_module, decl_storage, dispatch, ensure,
     sp_runtime::RuntimeDebug, sp_std::prelude::*,
@@ -32,7 +32,7 @@ pub const LISTENER_ENDPOINT: &'static str = "http://localhost:3005";
 
 // Custom types
 pub type Identifier = Vec<u8>;
-pub type Decimal = U16F16;
+pub type Decimal = I16F16;
 pub type ShipmentId = Identifier;
 pub type ShippingEventId = Identifier;
 pub type ShippingEventIndex = u64;
