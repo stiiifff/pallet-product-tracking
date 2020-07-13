@@ -1,12 +1,20 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use codec::{Decode, Encode};
+use codec::{alloc::string::ToString, Decode, Encode};
+use core::fmt;
 use fixed::types::U16F16;
 use frame_support::{
-    decl_error, decl_event, decl_module, decl_storage, dispatch, ensure, sp_runtime::RuntimeDebug,
-    sp_std::prelude::*,
+    debug, decl_error, decl_event, decl_module, decl_storage, dispatch, ensure,
+    sp_runtime::RuntimeDebug, sp_std::prelude::*,
 };
-use frame_system::{self as system, ensure_signed};
+use frame_system::{
+    self as system, ensure_none, ensure_signed,
+    offchain::{SendTransactionTypes, SubmitTransaction},
+};
+use sp_runtime::transaction_validity::{
+    InvalidTransaction, TransactionSource, TransactionValidity, ValidTransaction,
+};
+
 use product_registry::ProductId;
 
 #[cfg(test)]
@@ -19,6 +27,8 @@ mod tests;
 // Note: these could also be passed as trait config parameters
 pub const IDENTIFIER_MAX_LENGTH: usize = 10;
 pub const SHIPMENT_MAX_PRODUCTS: usize = 10;
+
+pub const LISTENER_ENDPOINT: &'static str = "http://localhost:3005";
 
 // Custom types
 pub type Identifier = Vec<u8>;
@@ -61,8 +71,8 @@ impl<AccountId, Moment> Shipment<AccountId, Moment> {
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
 pub enum ShippingEventType {
     ShipmentPickup,
-    SensorReading,
     ShipmentDelivery,
+    SensorReading,
 }
 
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
@@ -99,7 +109,48 @@ pub struct Reading<Moment> {
     value: Decimal,
 }
 
-pub trait Trait: system::Trait + timestamp::Trait {
+#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
+pub enum OcwTaskType {
+    ShipmentRegistration,
+    ShipmentPickup,
+    ShipmentDelivery,
+}
+
+impl OcwTaskType {
+    pub fn from_shipping_event_type(
+        shipping_event_type: &ShippingEventType,
+    ) -> Result<OcwTaskType, &'static str> {
+        match shipping_event_type {
+            ShippingEventType::ShipmentPickup => Ok(OcwTaskType::ShipmentPickup),
+            ShippingEventType::ShipmentDelivery => Ok(OcwTaskType::ShipmentDelivery),
+            ShippingEventType::SensorReading => Err("Unsupported shipping event type conversion"),
+        }
+    }
+}
+
+#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
+pub enum OcwTaskPayload<AccountId, Moment> {
+    Shipment(Shipment<AccountId, Moment>),
+    ShippingEvent(ShippingEvent<Moment>),
+}
+
+#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
+pub struct OcwTask<AccountId, Moment> {
+    r#type: OcwTaskType,
+    payload: OcwTaskPayload<AccountId, Moment>,
+}
+
+impl<A, M> fmt::Display for OcwTask<A, M>
+where
+    A: fmt::Debug,
+    M: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+pub trait Trait: system::Trait + timestamp::Trait + SendTransactionTypes<Call<Self>> {
     type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
 }
 
@@ -112,6 +163,8 @@ decl_storage! {
         pub AllEvents get(fn event_by_idx): map hasher(blake2_128_concat) ShippingEventIndex => Option<ShippingEvent<T::Moment>>;
         pub EventIndices get(fn event_idx_from_id): map hasher(blake2_128_concat) ShippingEventId => Option<ShippingEventIndex>;
         pub EventsOfShipment get(fn events_of_shipment): map hasher(blake2_128_concat) ShipmentId => Vec<ShippingEventIndex>;
+        // OCW tasks queue
+        pub OcwTasks get(fn ocw_tasks): Vec<OcwTask<T::AccountId, T::Moment>>;
     }
 }
 
@@ -172,8 +225,14 @@ decl_module! {
             // Storage writes
             // --------------
             // Add shipment (1 DB write)
-            <Shipments<T>>::insert(&id, shipment);
+            <Shipments<T>>::insert(&id, shipment.clone());
             <ShipmentsOfOrganization<T>>::append(&owner, &id);
+
+                  // Inserting task to the ocw tasks queue
+                  <OcwTasks<T>>::append(OcwTask {
+                        r#type: OcwTaskType::ShipmentRegistration,
+                        payload: OcwTaskPayload::Shipment(shipment),
+                  });
 
             Self::deposit_event(RawEvent::ShipmentRegistered(who, id.clone(), owner));
             Self::deposit_event(RawEvent::ShipmentStatusUpdated(id, status));
@@ -220,7 +279,7 @@ decl_module! {
             // Storage writes
             // --------------
             EventCount::put(event_idx);
-            <AllEvents<T>>::insert(event_idx, event);
+            <AllEvents<T>>::insert(event_idx, event.clone());
             EventIndices::insert(&event_id, event_idx);
             EventsOfShipment::append(&shipment_id, event_idx);
 
@@ -236,11 +295,46 @@ decl_module! {
                     };
                     let new_status = shipment.status.clone();
                     <Shipments<T>>::insert(&shipment_id, shipment);
+
+                              // Inserting task to the ocw tasks queue
+                              <OcwTasks<T>>::append(OcwTask {
+                                    r#type: OcwTaskType::from_shipping_event_type(&event_type)?,
+                                    payload: OcwTaskPayload::ShippingEvent(event),
+                              });
+
                     Self::deposit_event(RawEvent::ShipmentStatusUpdated(shipment_id, new_status));
                 },
             }
-
             Ok(())
+        }
+
+        #[weight = 0]
+        pub fn clear_ocwtasks(origin) -> dispatch::DispatchResult {
+            // Using unsigned_tx with signed payload to call this function, to ensure
+            //   only authroized chain node can call this
+            ensure_none(origin)?;
+            <OcwTasks<T>>::kill();
+            Ok(())
+        }
+
+        fn offchain_worker(_block_number: T::BlockNumber) {
+            if Self::ocw_tasks().len() == 0 { return; }
+            let mut tasks: Vec<OcwTask<T::AccountId, T::Moment>> = <OcwTasks<T>>::get();
+
+            while tasks.len() > 0 {
+                let task = tasks.remove(0);
+                debug::info!("ocw task: {:?}", task);
+                let _ = Self::notify_listener(&task).map_err(|e| {
+                    debug::error!("Error notifying listener. Err: {:?}", e);
+                });
+            }
+
+            // Submit a transaction back on-chain to clear the task queue
+            let call = Call::clear_ocwtasks();
+
+            let _ = SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()).map_err(|e| {
+                debug::error!("Failed in submitting tx for clearing ocw taskqueue. Err: {:?}", e);
+            });
         }
     }
 }
@@ -251,6 +345,30 @@ impl<T: Trait> Module<T> {
         ShipmentBuilder::<T::AccountId, T::Moment>::default()
     }
 
+    fn notify_listener(task: &OcwTask<T::AccountId, T::Moment>) -> Result<(), &'static str> {
+        let request =
+            sp_runtime::offchain::http::Request::post(&LISTENER_ENDPOINT, vec![task.to_string()]);
+
+        let timeout =
+            sp_io::offchain::timestamp().add(sp_runtime::offchain::Duration::from_millis(3000));
+
+        let pending = request
+            .add_header(&"Content-Type", &"text/plain")
+            .deadline(timeout) // Setting the timeout time
+            .send() // Sending the request out by the host
+            .map_err(|_| "http post request building error")?;
+
+        let response = pending
+            .try_wait(timeout)
+            .map_err(|_| "http post request sent error")?
+            .map_err(|_| "http post request sent error")?;
+
+        if response.code != 200 {
+            return Err("http response error");
+        }
+
+        Ok(())
+    }
     pub fn validate_identifier(id: &[u8]) -> Result<(), Error<T>> {
         // Basic identifier validation
         ensure!(!id.is_empty(), Error::<T>::InvalidOrMissingIdentifier);
@@ -334,6 +452,25 @@ where
             registered: self.registered,
             status: ShipmentStatus::Pending,
             delivered: None,
+        }
+    }
+}
+
+// To allow the module submitting unsigned transaction
+impl<T: Trait> frame_support::unsigned::ValidateUnsigned for Module<T> {
+    type Call = Call<T>;
+
+    fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
+        if let Call::clear_ocwtasks() = call {
+            // TODO: validate the signed payload and verify the payload here
+            ValidTransaction::with_tag_prefix("product-tracking-ocw")
+                .priority(100)
+                .and_provides([b"clear_ocwtasks"])
+                .longevity(3)
+                .propagate(true)
+                .build()
+        } else {
+            InvalidTransaction::Call.into()
         }
     }
 }

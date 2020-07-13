@@ -12,7 +12,7 @@ jobs:
           rust-version: nightly
           components: clippy, rustfmt
           targets: wasm32-unknown-unknown
-      
+
       - name: Checkout sources
         uses: actions/checkout@v1
 
@@ -35,11 +35,11 @@ jobs:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Check Formatting
-        run: cargo fmt --all -- --check
+      # - name: Check Formatting
+      #   run: cargo fmt --all -- --check
 
-      - name: Unleash clippy
-        run: cargo clippy -- -D warnings -A deprecated
+      # - name: Unleash clippy
+      #   run: cargo clippy -- -D warnings -A deprecated
 
       - name: Build Native
         run: cargo build
