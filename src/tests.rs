@@ -78,7 +78,23 @@ fn register_shipment_without_products() {
             })
         );
 
-        assert_eq!(<ShipmentsOfOrganization<Test>>::get(owner), vec![id]);
+        assert_eq!(
+            <ShipmentsOfOrganization<Test>>::get(owner),
+            vec![id.clone()]
+        );
+
+        assert!(System::events().iter().any(|er| er.event
+            == TestEvent::product_tracking(RawEvent::ShipmentRegistered(
+                sender,
+                id.clone(),
+                owner
+            ))));
+
+        assert!(System::events().iter().any(|er| er.event
+            == TestEvent::product_tracking(RawEvent::ShipmentStatusUpdated(
+                id.clone(),
+                ShipmentStatus::Pending
+            ))));
     });
 }
 
@@ -120,7 +136,23 @@ fn register_shipment_with_valid_products() {
             })
         );
 
-        assert_eq!(<ShipmentsOfOrganization<Test>>::get(owner), vec![id]);
+        assert_eq!(
+            <ShipmentsOfOrganization<Test>>::get(owner),
+            vec![id.clone()]
+        );
+
+        assert!(System::events().iter().any(|er| er.event
+            == TestEvent::product_tracking(RawEvent::ShipmentRegistered(
+                sender,
+                id.clone(),
+                owner
+            ))));
+
+        assert!(System::events().iter().any(|er| er.event
+            == TestEvent::product_tracking(RawEvent::ShipmentStatusUpdated(
+                id.clone(),
+                ShipmentStatus::Pending
+            ))));
     });
 }
 
@@ -422,7 +454,7 @@ fn record_event_for_shipment_pickup() {
 
         // Storage is correctly updated
         assert_eq!(EventCount::get(), 1);
-        assert_eq!(EventIndices::get(event_id), Some(1));
+        assert_eq!(EventIndices::get(&event_id), Some(1));
         assert_eq!(AllEvents::<Test>::get(1), Some(event));
         assert_eq!(EventsOfShipment::get(&shipment_id), vec![1]);
 
@@ -438,6 +470,21 @@ fn record_event_for_shipment_pickup() {
                 delivered: None
             })
         );
+
+        // Events are raised
+        assert!(System::events().iter().any(|er| er.event
+            == TestEvent::product_tracking(RawEvent::ShippingEventRecorded(
+                account_key(TEST_SENDER),
+                event_id.clone(),
+                shipment_id.clone(),
+                ShippingEventType::ShipmentPickup
+            ))));
+
+        assert!(System::events().iter().any(|er| er.event
+            == TestEvent::product_tracking(RawEvent::ShipmentStatusUpdated(
+                shipment_id.clone(),
+                ShipmentStatus::InTransit
+            ))));
     })
 }
 
@@ -475,7 +522,7 @@ fn record_event_for_shipment_delivery() {
 
         // Storage is correctly updated
         assert_eq!(EventCount::get(), 1);
-        assert_eq!(EventIndices::get(event_id), Some(1));
+        assert_eq!(EventIndices::get(&event_id), Some(1));
         assert_eq!(AllEvents::<Test>::get(1), Some(event));
         assert_eq!(EventsOfShipment::get(&shipment_id), vec![1]);
 
@@ -492,6 +539,21 @@ fn record_event_for_shipment_delivery() {
                 delivered: Some(now)
             })
         );
+
+        // Events are raised
+        assert!(System::events().iter().any(|er| er.event
+            == TestEvent::product_tracking(RawEvent::ShippingEventRecorded(
+                account_key(TEST_SENDER),
+                event_id.clone(),
+                shipment_id.clone(),
+                ShippingEventType::ShipmentDelivery
+            ))));
+
+        assert!(System::events().iter().any(|er| er.event
+            == TestEvent::product_tracking(RawEvent::ShipmentStatusUpdated(
+                shipment_id.clone(),
+                ShipmentStatus::Delivered
+            ))));
     })
 }
 
@@ -541,7 +603,7 @@ fn record_event_for_sensor_reading() {
 
         // Storage is correctly updated
         assert_eq!(EventCount::get(), 2);
-        assert_eq!(EventIndices::get(event_id), Some(2));
+        assert_eq!(EventIndices::get(&event_id), Some(2));
         assert_eq!(AllEvents::<Test>::get(2), Some(event));
         assert_eq!(EventsOfShipment::get(&shipment_id), vec![1, 2]);
 
@@ -557,6 +619,15 @@ fn record_event_for_sensor_reading() {
                 delivered: None
             })
         );
+
+        // Event is raised
+        assert!(System::events().iter().any(|er| er.event
+            == TestEvent::product_tracking(RawEvent::ShippingEventRecorded(
+                account_key(TEST_SENDER),
+                event_id.clone(),
+                shipment_id.clone(),
+                ShippingEventType::SensorReading
+            ))));
     })
 }
 

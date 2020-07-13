@@ -1,7 +1,7 @@
 // Creating mock runtime here
 
 use crate::{Call, Module, Trait};
-use frame_support::{impl_outer_origin, parameter_types, weights::Weight};
+use frame_support::{impl_outer_event, impl_outer_origin, parameter_types, weights::Weight};
 use frame_system as system;
 use sp_core::{
     // offchain::{
@@ -18,8 +18,17 @@ use sp_runtime::{
     Perbill,
 };
 
+use crate as product_tracking;
+
 impl_outer_origin! {
     pub enum Origin for Test {}
+}
+
+impl_outer_event! {
+    pub enum TestEvent for Test {
+        system<T>,
+        product_tracking<T>,
+    }
 }
 
 // For testing the pallet, we construct most of a mock runtime. This means
@@ -33,6 +42,7 @@ parameter_types! {
     pub const MaximumBlockLength: u32 = 2 * 1024;
     pub const AvailableBlockRatio: Perbill = Perbill::from_percent(75);
 }
+
 impl system::Trait for Test {
     type BaseCallFilter = ();
     type Origin = Origin;
@@ -44,7 +54,7 @@ impl system::Trait for Test {
     type AccountId = sr25519::Public;
     type Lookup = IdentityLookup<Self::AccountId>;
     type Header = Header;
-    type Event = ();
+    type Event = TestEvent;
     type BlockHashCount = BlockHashCount;
     type MaximumBlockWeight = MaximumBlockWeight;
     type DbWeight = ();
@@ -67,19 +77,24 @@ impl timestamp::Trait for Test {
 }
 
 impl Trait for Test {
-    type Event = ();
+    type Event = TestEvent;
 }
 
 pub type ProductTracking = Module<Test>;
+pub type System = system::Module<Test>;
 pub type Timestamp = timestamp::Module<Test>;
 
 // This function basically just builds a genesis storage key/value store according to
 // our desired mockup.
 pub fn new_test_ext() -> sp_io::TestExternalities {
-    frame_system::GenesisConfig::default()
+    let storage = frame_system::GenesisConfig::default()
         .build_storage::<Test>()
-        .unwrap()
-        .into()
+        .unwrap();
+    let mut ext = sp_io::TestExternalities::from(storage);
+    // Events are not emitted on block 0 -> advance to block 1.
+    // Any dispatchable calls made during genesis block will have no events emitted.
+    ext.execute_with(|| System::set_block_number(1));
+    ext
 }
 
 pub fn account_key(s: &str) -> sr25519::Public {
