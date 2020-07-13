@@ -1,11 +1,19 @@
 // Creating mock runtime here
 
-use crate::{Module, Trait};
+use crate::{Call, Module, Trait};
 use frame_support::{impl_outer_origin, parameter_types, weights::Weight};
 use frame_system as system;
-use sp_core::{sr25519, Pair, H256};
+use sp_core::{
+    // offchain::{
+    //     testing::{self, OffchainState, PoolState},
+    //     OffchainExt, TransactionPoolExt,
+    // },
+    sr25519,
+    Pair,
+    H256,
+};
 use sp_runtime::{
-    testing::Header,
+    testing::{Header, TestXt},
     traits::{BlakeTwo256, IdentityLookup},
     Perbill,
 };
@@ -78,4 +86,16 @@ pub fn account_key(s: &str) -> sr25519::Public {
     sr25519::Pair::from_string(&format!("//{}", s), None)
         .expect("static values are valid; qed")
         .public()
+}
+
+// Offchain worker
+
+type TestExtrinsic = TestXt<Call<Test>, ()>;
+
+impl<C> system::offchain::SendTransactionTypes<C> for Test
+where
+    Call<Test>: From<C>,
+{
+    type OverarchingCall = Call<Test>;
+    type Extrinsic = TestExtrinsic;
 }
