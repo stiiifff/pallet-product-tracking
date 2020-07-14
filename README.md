@@ -1,16 +1,37 @@
-# Substrate Pallet Template
+# Substrate Product Tracking pallet
 
-This is a template for a Substrate pallet which lives as its own crate so it can be imported into multiple runtimes. It is based on the ["template" pallet](https://github.com/paritytech/substrate/tree/master/bin/node-template/pallets/template) that is included with the [Substrate node template](https://github.com/paritytech/substrate/tree/master/bin/node-template).
+The Product Tracking pallet provides functionality for registering and tracking shipments, and monitoring their storage and transportation conditions, within a fictitious supply chain between various stakeholders.
+The high-level flow is shown below.
 
-Check out the [HOWTO](HOWTO.md) to learn how to use this for your own runtime module.
+![shipment flow](shipment_flow.png)
 
-This README should act as a general template for distributing your pallet to others.
+This pallet is part of the [Substrate Enterprise sample](https://github.com/gautamdhameja/substrate-enterprise-sample).
 
-## Purpose
+It is inspired by existing projects & standards:
+- [IBM Food Trust](https://github.com/IBM/IFT-Developer-Zone/wiki/APIs)
+- [Hyperledger Grid](https://www.hyperledger.org/use/grid)
+- [GS1 Standards](https://www.gs1.org/standards)
 
-This pallet acts as a template for building other pallets.
+NOTE: This pallet implements the aforementionned process in a simplified way, thus it is intended for demonstration purposes and is not audited or ready for production use.
 
-It currently allows a user to put a `u32` value into storage, which triggers a runtime event.
+## Usage
+
+### Register a shipment
+
+To register a shipment, one must send a transaction with a `productTracking.registerShipment extrinsic with the following arguments:
+- `id` as the Shipment ID, an arbitrary numeric or alpha-numeric code that uniquely identifies the shipment.
+- `owner` as the Substrate Account representing the person (or function within an organization) responsible for the shipping process of the given shipment.
+- `products` which is a series of product IDs associated with the given shipment.
+
+### Record a shipping event
+
+When a shipment has been registered, the related shipping events can be recorded on-chain by sending a 'productTracking.recordEvent' extrinsic with an `event` argument, a data structure containing information about a shipping event for a given shipment:
+- `id` the event ID, an arbitrary numeric or alpha-numeric code that uniquely identifies the event (e.g. GUID).
+- `event_type` as the type of shipping event to be recorded: `ShipmentPickup`, `ShipmentDelivery` or `SensorReading`.
+- `shipment_id` is the Shipment ID which identifies which shipment the given event is related to.
+- `location` is an optional `ReadPoint` which contains the geographic position (`latitude` and `longitude`) where the event was captured.
+- `readings` which is a series of `Reading` that represent data captured by various sensors (humidity, Temperature, vibration, etc). A `Reading` includes a `device_id` (unique idenfitier of the device), a `reading_type` (type of sensor / measurement, see `ReadingType` enum), a `timestamp` (time at which the reading was recorded), and a `value` as the actual measurement recorded by the sensor.
+- `timestamp` as time (represented as UNIX time) at which the event was captured by an external system or sensor.
 
 ## Dependencies
 
@@ -20,18 +41,29 @@ This pallet does not depend on any externally defined traits.
 
 ### Pallets
 
-This pallet does not depend on any other FRAME pallet or externally developed modules.
+This pallet depends on on the [FRAME Timestamp pallet](https://docs.rs/crate/pallet-timestamp).
 
-## Installation
+## Testing
+
+Run the tests with:
+
+    ```
+    cargo test
+    ```
+
+## How to use in your runtime
 
 ### Runtime `Cargo.toml`
 
 To add this pallet to your runtime, simply include the following to your runtime's `Cargo.toml` file:
 
 ```TOML
-[dependencies.substrate-pallet-template]
+[dependencies.product-tracking]
 default_features = false
-git = 'https://github.com/substrate-developer-hub/substrate-pallet-template.git'
+git = 'https://github.com/stiiifff/pallet-product-tracking.git'
+package = 'pallet-product-tracking'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
 ```
 
 and update your runtime's `std` feature to include this pallet:
@@ -39,7 +71,7 @@ and update your runtime's `std` feature to include this pallet:
 ```TOML
 std = [
     # --snip--
-    'example_pallet/std',
+    'product-tracking/std',
 ]
 ```
 
@@ -49,7 +81,7 @@ You should implement it's trait like so:
 
 ```rust
 /// Used for test_module
-impl example_pallet::Trait for Runtime {
+impl product_tracking::Trait for Runtime {
 	type Event = Event;
 }
 ```
@@ -57,7 +89,7 @@ impl example_pallet::Trait for Runtime {
 and include it in your `construct_runtime!` macro:
 
 ```rust
-ExamplePallet: substrate_pallet_template::{Module, Call, Storage, Event<T>},
+ProductTracking: product_tracking::{Module, Call, Storage, Event<T>, ValidateUnsigned},
 ```
 
 ### Genesis Configuration
@@ -71,5 +103,3 @@ You can view the reference docs for this pallet by running:
 ```
 cargo doc --open
 ```
-
-or by visiting this site: <Add Your Link>
