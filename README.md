@@ -62,7 +62,6 @@ To add this pallet to your runtime, simply include the following to your runtime
 default_features = false
 git = 'https://github.com/stiiifff/pallet-product-tracking.git'
 package = 'pallet-product-tracking'
-tag = 'v2.0.0-rc4'
 version = '2.0.0-rc4'
 ```
 
