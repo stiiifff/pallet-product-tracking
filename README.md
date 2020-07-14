@@ -18,14 +18,14 @@ NOTE: This pallet implements the aforementionned process in a simplified way, th
 
 ### Register a shipment
 
-To register a shipment, one must send a transaction with a `productTracking.registerShipment extrinsic with the following arguments:
+To register a shipment, one must send a transaction with a `productTracking.registerShipment` extrinsic with the following arguments:
 - `id` as the Shipment ID, an arbitrary numeric or alpha-numeric code that uniquely identifies the shipment.
 - `owner` as the Substrate Account representing the person (or function within an organization) responsible for the shipping process of the given shipment.
 - `products` which is a series of product IDs associated with the given shipment.
 
 ### Record a shipping event
 
-When a shipment has been registered, the related shipping events can be recorded on-chain by sending a 'productTracking.recordEvent' extrinsic with an `event` argument, a data structure containing information about a shipping event for a given shipment:
+When a shipment has been registered, the related shipping events can be recorded on-chain by sending a `productTracking.recordEvent` extrinsic with an `event` argument, a data structure containing information about a shipping event for a given shipment:
 - `id` the event ID, an arbitrary numeric or alpha-numeric code that uniquely identifies the event (e.g. GUID).
 - `event_type` as the type of shipping event to be recorded: `ShipmentPickup`, `ShipmentDelivery` or `SensorReading`.
 - `shipment_id` is the Shipment ID which identifies which shipment the given event is related to.
