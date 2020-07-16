@@ -1,7 +1,5 @@
-// Tests to be written here
-
 use super::*;
-use crate::{mock::*, Error};
+use crate::{types::*, mock::*, Error};
 use fixed::types::I16F16;
 use frame_support::{assert_noop, assert_ok, dispatch};
 
@@ -25,10 +23,9 @@ pub fn store_test_shipment<T: Trait>(
     );
 }
 
-pub fn store_test_event<T: Trait>(id: ShippingEventId, shipment_id: ShipmentId) {
+pub fn store_test_event<T: Trait>(shipment_id: ShipmentId, event_type: ShippingEventType) {
     let event = ShippingEvent {
-        id: id.clone(),
-        event_type: ShippingEventType::ShipmentPickup,
+        event_type,
         shipment_id: shipment_id.clone(),
         location: None,
         readings: vec![],
@@ -36,7 +33,6 @@ pub fn store_test_event<T: Trait>(id: ShippingEventId, shipment_id: ShipmentId) 
     };
     let event_idx = EventCount::get().checked_add(1).unwrap();
     EventCount::put(event_idx);
-    EventIndices::insert(id, event_idx);
     AllEvents::<T>::insert(event_idx, event);
     EventsOfShipment::append(shipment_id, event_idx);
 }
@@ -45,7 +41,6 @@ const TEST_PRODUCT_ID: &str = "00012345678905";
 const TEST_SHIPMENT_ID: &str = "0001";
 const TEST_ORGANIZATION: &str = "Northwind";
 const TEST_SENDER: &str = "Alice";
-const TEST_SHIPPING_EVENT_ID: &str = "9421fec019fb48299fbe";
 const LONG_VALUE : &str = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec aliquam ut tortor nec congue. Pellente";
 
 #[test]
@@ -92,7 +87,9 @@ fn register_shipment_without_products() {
 
         assert!(System::events().iter().any(|er| er.event
             == TestEvent::product_tracking(RawEvent::ShipmentStatusUpdated(
+                sender,
                 id.clone(),
+                1,
                 ShipmentStatus::Pending
             ))));
     });
@@ -150,7 +147,9 @@ fn register_shipment_with_valid_products() {
 
         assert!(System::events().iter().any(|er| er.event
             == TestEvent::product_tracking(RawEvent::ShipmentStatusUpdated(
+                sender,
                 id.clone(),
+                1,
                 ShipmentStatus::Pending
             ))));
     });
@@ -255,21 +254,18 @@ fn register_shipment_with_too_many_products() {
 }
 
 #[test]
-fn record_event_with_invalid_sender() {
+fn track_shipment_with_invalid_sender() {
     new_test_ext().execute_with(|| {
         let now = 42;
 
         assert_noop!(
-            ProductTracking::record_event(
+            ProductTracking::track_shipment(
                 Origin::none(),
-                ShippingEvent {
-                    id: TEST_SHIPPING_EVENT_ID.as_bytes().to_owned(),
-                    event_type: ShippingEventType::ShipmentPickup,
-                    shipment_id: TEST_SHIPMENT_ID.as_bytes().to_owned(),
-                    location: None,
-                    readings: vec![],
-                    timestamp: now
-                }
+                TEST_SHIPMENT_ID.as_bytes().to_owned(),
+                ShippingOperation::Pickup,
+                now,
+                None,
+                None
             ),
             dispatch::DispatchError::BadOrigin
         );
@@ -277,65 +273,18 @@ fn record_event_with_invalid_sender() {
 }
 
 #[test]
-fn record_event_with_missing_event_id() {
+fn track_shipment_with_missing_shipment_id() {
     new_test_ext().execute_with(|| {
         let now = 42;
 
         assert_noop!(
-            ProductTracking::record_event(
+            ProductTracking::track_shipment(
                 Origin::signed(account_key(TEST_SENDER)),
-                ShippingEvent {
-                    id: vec![],
-                    event_type: ShippingEventType::ShipmentPickup,
-                    shipment_id: TEST_SHIPMENT_ID.as_bytes().to_owned(),
-                    location: None,
-                    readings: vec![],
-                    timestamp: now
-                }
-            ),
-            Error::<Test>::InvalidOrMissingIdentifier,
-        );
-    });
-}
-
-#[test]
-fn record_event_with_long_event_id() {
-    new_test_ext().execute_with(|| {
-        let now = 42;
-
-        assert_noop!(
-            ProductTracking::record_event(
-                Origin::signed(account_key(TEST_SENDER)),
-                ShippingEvent {
-                    id: LONG_VALUE.as_bytes().to_owned(),
-                    event_type: ShippingEventType::ShipmentPickup,
-                    shipment_id: TEST_SHIPMENT_ID.as_bytes().to_owned(),
-                    location: None,
-                    readings: vec![],
-                    timestamp: now
-                }
-            ),
-            Error::<Test>::InvalidOrMissingIdentifier,
-        );
-    });
-}
-
-#[test]
-fn record_event_with_missing_shipment_id() {
-    new_test_ext().execute_with(|| {
-        let now = 42;
-
-        assert_noop!(
-            ProductTracking::record_event(
-                Origin::signed(account_key(TEST_SENDER)),
-                ShippingEvent {
-                    id: TEST_SHIPPING_EVENT_ID.as_bytes().to_owned(),
-                    event_type: ShippingEventType::ShipmentPickup,
-                    shipment_id: vec![],
-                    location: None,
-                    readings: vec![],
-                    timestamp: now
-                }
+                vec![],
+                ShippingOperation::Pickup,
+                now,
+                None,
+                None
             ),
             Error::<Test>::InvalidOrMissingIdentifier
         );
@@ -343,21 +292,18 @@ fn record_event_with_missing_shipment_id() {
 }
 
 #[test]
-fn record_event_with_long_shipment_id() {
+fn track_shipment_with_long_shipment_id() {
     new_test_ext().execute_with(|| {
         let now = 42;
 
         assert_noop!(
-            ProductTracking::record_event(
+            ProductTracking::track_shipment(
                 Origin::signed(account_key(TEST_SENDER)),
-                ShippingEvent {
-                    id: TEST_SHIPPING_EVENT_ID.as_bytes().to_owned(),
-                    event_type: ShippingEventType::ShipmentPickup,
-                    shipment_id: LONG_VALUE.as_bytes().to_owned(),
-                    location: None,
-                    readings: vec![],
-                    timestamp: now
-                }
+                LONG_VALUE.as_bytes().to_owned(),
+                ShippingOperation::Pickup,
+                now,
+                None,
+                None
             ),
             Error::<Test>::InvalidOrMissingIdentifier,
         );
@@ -365,57 +311,19 @@ fn record_event_with_long_shipment_id() {
 }
 
 #[test]
-fn record_event_with_existing_id() {
+fn track_shipment_with_unknown_shipment() {
     new_test_ext().execute_with(|| {
-        let existing_event = hex::decode(TEST_SHIPPING_EVENT_ID).unwrap();
-        let existing_shipment = TEST_SHIPMENT_ID.as_bytes().to_owned();
-        let now = 42;
-
-        store_test_shipment::<Test>(
-            existing_shipment.clone(),
-            account_key(TEST_ORGANIZATION),
-            ShipmentStatus::Pending,
-            vec![],
-            now,
-        );
-
-        store_test_event::<Test>(existing_event.clone(), existing_shipment.clone());
-
-        assert_noop!(
-            ProductTracking::record_event(
-                Origin::signed(account_key(TEST_SENDER)),
-                ShippingEvent {
-                    id: existing_event,
-                    event_type: ShippingEventType::ShipmentPickup,
-                    shipment_id: existing_shipment,
-                    location: None,
-                    readings: vec![],
-                    timestamp: now
-                }
-            ),
-            Error::<Test>::ShippingEventAlreadyExists,
-        );
-    })
-}
-
-#[test]
-fn record_event_with_unknown_shipment() {
-    new_test_ext().execute_with(|| {
-        let event_id = hex::decode(TEST_SHIPPING_EVENT_ID).unwrap();
         let unknown_shipment = TEST_SHIPMENT_ID.as_bytes().to_owned();
         let now = 42;
 
         assert_noop!(
-            ProductTracking::record_event(
+            ProductTracking::track_shipment(
                 Origin::signed(account_key(TEST_SENDER)),
-                ShippingEvent {
-                    id: event_id,
-                    event_type: ShippingEventType::ShipmentPickup,
-                    shipment_id: unknown_shipment,
-                    location: None,
-                    readings: vec![],
-                    timestamp: now
-                }
+                unknown_shipment,
+                ShippingOperation::Pickup,
+                now,
+                None,
+                None
             ),
             Error::<Test>::ShipmentIsUnknown,
         );
@@ -423,13 +331,13 @@ fn record_event_with_unknown_shipment() {
 }
 
 #[test]
-fn record_event_for_shipment_pickup() {
+fn track_shipment_pickup() {
     new_test_ext().execute_with(|| {
         let owner = account_key(TEST_ORGANIZATION);
-        let event_id = hex::decode(TEST_SHIPPING_EVENT_ID).unwrap();
         let shipment_id = TEST_SHIPMENT_ID.as_bytes().to_owned();
         let now = 42;
 
+        // Store shipment w/ Pending status
         store_test_shipment::<Test>(
             shipment_id.clone(),
             owner,
@@ -438,25 +346,32 @@ fn record_event_for_shipment_pickup() {
             now,
         );
 
+        // Store shipping registration event
+        store_test_event::<Test>(shipment_id.clone(), ShippingEventType::ShipmentRegistration);
+
         // Dispatchable call succeeds
-        let event = ShippingEvent {
-            id: event_id.clone(),
-            event_type: ShippingEventType::ShipmentPickup,
-            shipment_id: shipment_id.clone(),
-            location: None,
-            readings: vec![],
-            timestamp: now,
-        };
-        assert_ok!(ProductTracking::record_event(
-            Origin::signed(account_key(TEST_SENDER)),
-            event.clone()
+        assert_ok!(ProductTracking::track_shipment(
+            Origin::signed(owner),
+            shipment_id.clone(),
+            ShippingOperation::Pickup,
+            now,
+            None,
+            None
         ));
 
         // Storage is correctly updated
-        assert_eq!(EventCount::get(), 1);
-        assert_eq!(EventIndices::get(&event_id), Some(1));
-        assert_eq!(AllEvents::<Test>::get(1), Some(event));
-        assert_eq!(EventsOfShipment::get(&shipment_id), vec![1]);
+        assert_eq!(EventCount::get(), 2);
+        assert_eq!(
+            AllEvents::<Test>::get(2),
+            Some(ShippingEvent {
+                event_type: ShippingEventType::ShipmentPickup,
+                shipment_id: shipment_id.clone(),
+                location: None,
+                readings: vec![],
+                timestamp: now,
+            })
+        );
+        assert_eq!(EventsOfShipment::get(&shipment_id), vec![1, 2]);
 
         // Shipment's status should be updated to 'InTransit'
         assert_eq!(
@@ -471,28 +386,21 @@ fn record_event_for_shipment_pickup() {
             })
         );
 
-        // Events are raised
-        assert!(System::events().iter().any(|er| er.event
-            == TestEvent::product_tracking(RawEvent::ShippingEventRecorded(
-                account_key(TEST_SENDER),
-                event_id.clone(),
-                shipment_id.clone(),
-                ShippingEventType::ShipmentPickup
-            ))));
-
+        // Event is raised
         assert!(System::events().iter().any(|er| er.event
             == TestEvent::product_tracking(RawEvent::ShipmentStatusUpdated(
+                owner,
                 shipment_id.clone(),
+                2,
                 ShipmentStatus::InTransit
             ))));
     })
 }
 
 #[test]
-fn record_event_for_shipment_delivery() {
+fn track_shipment_delivery() {
     new_test_ext().execute_with(|| {
         let owner = account_key(TEST_ORGANIZATION);
-        let event_id = hex::decode(TEST_SHIPPING_EVENT_ID).unwrap();
         let shipment_id = TEST_SHIPMENT_ID.as_bytes().to_owned();
         let now = 42;
         Timestamp::set_timestamp(now);
@@ -506,27 +414,35 @@ fn record_event_for_shipment_delivery() {
             now,
         );
 
+        // Store shipping registration & pickup events
+        store_test_event::<Test>(shipment_id.clone(), ShippingEventType::ShipmentRegistration);
+        store_test_event::<Test>(shipment_id.clone(), ShippingEventType::ShipmentPickup);
+
         // Dispatchable call succeeds
-        let event = ShippingEvent {
-            id: event_id.clone(),
-            event_type: ShippingEventType::ShipmentDelivery,
-            shipment_id: shipment_id.clone(),
-            location: None,
-            readings: vec![],
-            timestamp: now,
-        };
-        assert_ok!(ProductTracking::record_event(
-            Origin::signed(account_key(TEST_SENDER)),
-            event.clone()
+        assert_ok!(ProductTracking::track_shipment(
+            Origin::signed(owner),
+            shipment_id.clone(),
+            ShippingOperation::Deliver,
+            now,
+            None,
+            None
         ));
 
         // Storage is correctly updated
-        assert_eq!(EventCount::get(), 1);
-        assert_eq!(EventIndices::get(&event_id), Some(1));
-        assert_eq!(AllEvents::<Test>::get(1), Some(event));
-        assert_eq!(EventsOfShipment::get(&shipment_id), vec![1]);
+        assert_eq!(EventCount::get(), 3);
+        assert_eq!(
+            AllEvents::<Test>::get(3),
+            Some(ShippingEvent {
+                event_type: ShippingEventType::ShipmentDeliver,
+                shipment_id: shipment_id.clone(),
+                location: None,
+                readings: vec![],
+                timestamp: now,
+            })
+        );
+        assert_eq!(EventsOfShipment::get(&shipment_id), vec![1, 2, 3]);
 
-        // Shipment's status should be updated to 'InTransit'
+        // Shipment's status should be updated to 'Delivered'
         // and delivered timestamp updated
         assert_eq!(
             ProductTracking::shipment_by_id(&shipment_id),
@@ -540,177 +456,21 @@ fn record_event_for_shipment_delivery() {
             })
         );
 
-        // Events are raised
-        assert!(System::events().iter().any(|er| er.event
-            == TestEvent::product_tracking(RawEvent::ShippingEventRecorded(
-                account_key(TEST_SENDER),
-                event_id.clone(),
-                shipment_id.clone(),
-                ShippingEventType::ShipmentDelivery
-            ))));
-
+        // Events is raised
         assert!(System::events().iter().any(|er| er.event
             == TestEvent::product_tracking(RawEvent::ShipmentStatusUpdated(
+                owner,
                 shipment_id.clone(),
+                3,
                 ShipmentStatus::Delivered
             ))));
     })
 }
 
 #[test]
-fn record_event_for_sensor_reading() {
+fn track_shipment_for_delivered_shipment() {
     new_test_ext().execute_with(|| {
         let owner = account_key(TEST_ORGANIZATION);
-        let event_id = hex::decode(TEST_SHIPPING_EVENT_ID).unwrap();
-        let shipment_id = TEST_SHIPMENT_ID.as_bytes().to_owned();
-        let now = 42;
-
-        // Store shipment w/ InTransit status
-        store_test_shipment::<Test>(
-            shipment_id.clone(),
-            owner,
-            ShipmentStatus::InTransit,
-            vec![TEST_PRODUCT_ID.as_bytes().to_owned()],
-            now,
-        );
-
-        store_test_event::<Test>(
-            hex::decode("88356e4576444cae8c78").unwrap(),
-            shipment_id.clone(),
-        );
-
-        // Dispatchable call succeeds
-        let event = ShippingEvent {
-            id: event_id.clone(),
-            event_type: ShippingEventType::SensorReading,
-            shipment_id: shipment_id.clone(),
-            location: Some(ReadPoint {
-                latitude: I16F16::from_num(52.4941126),
-                longitude: I16F16::from_num(13.4355606),
-            }),
-            readings: vec![Reading {
-                device_id: "14d453ea4bdf46bc8042".as_bytes().to_owned(),
-                reading_type: ReadingType::Temperature,
-                value: I16F16::from_num(20.123),
-                timestamp: now,
-            }],
-            timestamp: now,
-        };
-        assert_ok!(ProductTracking::record_event(
-            Origin::signed(account_key(TEST_SENDER)),
-            event.clone()
-        ));
-
-        // Storage is correctly updated
-        assert_eq!(EventCount::get(), 2);
-        assert_eq!(EventIndices::get(&event_id), Some(2));
-        assert_eq!(AllEvents::<Test>::get(2), Some(event));
-        assert_eq!(EventsOfShipment::get(&shipment_id), vec![1, 2]);
-
-        // Shipment's status should still be 'InTransit'
-        assert_eq!(
-            ProductTracking::shipment_by_id(&shipment_id),
-            Some(Shipment {
-                id: shipment_id.clone(),
-                owner: owner,
-                status: ShipmentStatus::InTransit,
-                products: vec![TEST_PRODUCT_ID.as_bytes().to_owned()],
-                registered: now,
-                delivered: None
-            })
-        );
-
-        // Event is raised
-        assert!(System::events().iter().any(|er| er.event
-            == TestEvent::product_tracking(RawEvent::ShippingEventRecorded(
-                account_key(TEST_SENDER),
-                event_id.clone(),
-                shipment_id.clone(),
-                ShippingEventType::SensorReading
-            ))));
-    })
-}
-
-#[test]
-fn record_event_for_sensor_reading_with_negative_latlon() {
-    new_test_ext().execute_with(|| {
-        let owner = account_key(TEST_ORGANIZATION);
-        let event_id = hex::decode(TEST_SHIPPING_EVENT_ID).unwrap();
-        let shipment_id = TEST_SHIPMENT_ID.as_bytes().to_owned();
-        let now = 42;
-
-        // Store shipment w/ InTransit status
-        store_test_shipment::<Test>(
-            shipment_id.clone(),
-            owner,
-            ShipmentStatus::InTransit,
-            vec![TEST_PRODUCT_ID.as_bytes().to_owned()],
-            now,
-        );
-
-        store_test_event::<Test>(
-            hex::decode("88356e4576444cae8c78").unwrap(),
-            shipment_id.clone(),
-        );
-
-        // Dispatchable call succeeds
-        let event = ShippingEvent {
-            id: event_id.clone(),
-            event_type: ShippingEventType::SensorReading,
-            shipment_id: shipment_id.clone(),
-            location: Some(ReadPoint {
-                // Rio de Janeiro, Brazil
-                latitude: I16F16::from_num(-22.9466369),
-                longitude: I16F16::from_num(-43.233472),
-            }),
-            readings: vec![Reading {
-                device_id: "14d453ea4bdf46bc8042".as_bytes().to_owned(),
-                reading_type: ReadingType::Temperature,
-                value: I16F16::from_num(20.123),
-                timestamp: now,
-            }],
-            timestamp: now,
-        };
-        assert_ok!(ProductTracking::record_event(
-            Origin::signed(account_key(TEST_SENDER)),
-            event.clone()
-        ));
-
-        // Storage is correctly updated
-        assert_eq!(EventCount::get(), 2);
-        assert_eq!(EventIndices::get(&event_id), Some(2));
-        assert_eq!(AllEvents::<Test>::get(2), Some(event));
-        assert_eq!(EventsOfShipment::get(&shipment_id), vec![1, 2]);
-
-        // Shipment's status should still be 'InTransit'
-        assert_eq!(
-            ProductTracking::shipment_by_id(&shipment_id),
-            Some(Shipment {
-                id: shipment_id.clone(),
-                owner: owner,
-                status: ShipmentStatus::InTransit,
-                products: vec![TEST_PRODUCT_ID.as_bytes().to_owned()],
-                registered: now,
-                delivered: None
-            })
-        );
-
-        // Event is raised
-        assert!(System::events().iter().any(|er| er.event
-            == TestEvent::product_tracking(RawEvent::ShippingEventRecorded(
-                account_key(TEST_SENDER),
-                event_id.clone(),
-                shipment_id.clone(),
-                ShippingEventType::SensorReading
-            ))));
-    })
-}
-
-#[test]
-fn record_event_for_delivered_shipment() {
-    new_test_ext().execute_with(|| {
-        let owner = account_key(TEST_ORGANIZATION);
-        let event_id = hex::decode(TEST_SHIPPING_EVENT_ID).unwrap();
         let shipment_id = TEST_SHIPMENT_ID.as_bytes().to_owned();
         let now = 42;
 
@@ -724,16 +484,13 @@ fn record_event_for_delivered_shipment() {
         );
 
         assert_noop!(
-            ProductTracking::record_event(
-                Origin::signed(account_key(TEST_SENDER)),
-                ShippingEvent {
-                    id: event_id.clone(),
-                    event_type: ShippingEventType::ShipmentPickup,
-                    shipment_id: shipment_id.clone(),
-                    location: None,
-                    readings: vec![],
-                    timestamp: now,
-                }
+            ProductTracking::track_shipment(
+                Origin::signed(owner),
+                shipment_id.clone(),
+                ShippingOperation::Pickup,
+                now,
+                None,
+                None
             ),
             Error::<Test>::ShipmentHasBeenDelivered
         );
@@ -741,10 +498,9 @@ fn record_event_for_delivered_shipment() {
 }
 
 #[test]
-fn record_event_for_intransit_shipment() {
+fn track_shipment_for_intransit_shipment() {
     new_test_ext().execute_with(|| {
         let owner = account_key(TEST_ORGANIZATION);
-        let event_id = hex::decode(TEST_SHIPPING_EVENT_ID).unwrap();
         let shipment_id = TEST_SHIPMENT_ID.as_bytes().to_owned();
         let now = 42;
 
@@ -758,18 +514,160 @@ fn record_event_for_intransit_shipment() {
         );
 
         assert_noop!(
-            ProductTracking::record_event(
-                Origin::signed(account_key(TEST_SENDER)),
-                ShippingEvent {
-                    id: event_id.clone(),
-                    event_type: ShippingEventType::ShipmentPickup,
-                    shipment_id: shipment_id.clone(),
-                    location: None,
-                    readings: vec![],
-                    timestamp: now,
-                }
+            ProductTracking::track_shipment(
+                Origin::signed(owner),
+                shipment_id.clone(),
+                ShippingOperation::Pickup,
+                now,
+                None,
+                None
             ),
             Error::<Test>::ShipmentIsInTransit
+        );
+    })
+}
+
+#[test]
+fn monitor_shipment() {
+    new_test_ext().execute_with(|| {
+        let owner = account_key(TEST_ORGANIZATION);
+        let shipment_id = TEST_SHIPMENT_ID.as_bytes().to_owned();
+        let now = 42;
+
+        // Store shipment w/ InTransit status
+        store_test_shipment::<Test>(
+            shipment_id.clone(),
+            owner,
+            ShipmentStatus::InTransit,
+            vec![TEST_PRODUCT_ID.as_bytes().to_owned()],
+            now,
+        );
+
+        // Store shipping registration & pickup events
+        store_test_event::<Test>(shipment_id.clone(), ShippingEventType::ShipmentRegistration);
+        store_test_event::<Test>(shipment_id.clone(), ShippingEventType::ShipmentPickup);
+
+        // Define location & readings for sensor reading
+        let location = ReadPoint {
+            latitude: I16F16::from_num(52.4941126),
+            longitude: I16F16::from_num(13.4355606),
+        };
+
+        let readings = vec![Reading {
+            device_id: "14d453ea4bdf46bc8042".as_bytes().to_owned(),
+            reading_type: ReadingType::Temperature,
+            value: I16F16::from_num(20.123),
+            timestamp: now,
+        }];
+
+        // Dispatchable call succeeds
+        assert_ok!(ProductTracking::track_shipment(
+            Origin::signed(owner),
+            shipment_id.clone(),
+            ShippingOperation::Scan,
+            now,
+            Some(location.clone()),
+            Some(readings.clone())
+        ));
+
+        // Storage is correctly updated
+        assert_eq!(EventCount::get(), 3);
+        assert_eq!(
+            AllEvents::<Test>::get(3),
+            Some(ShippingEvent {
+                event_type: ShippingEventType::ShipmentScan,
+                shipment_id: shipment_id.clone(),
+                location: Some(location),
+                readings: readings,
+                timestamp: now,
+            })
+        );
+        assert_eq!(EventsOfShipment::get(&shipment_id), vec![1, 2, 3]);
+
+        // Shipment's status should still be 'InTransit'
+        assert_eq!(
+            ProductTracking::shipment_by_id(&shipment_id),
+            Some(Shipment {
+                id: shipment_id.clone(),
+                owner: owner,
+                status: ShipmentStatus::InTransit,
+                products: vec![TEST_PRODUCT_ID.as_bytes().to_owned()],
+                registered: now,
+                delivered: None
+            })
+        );
+    })
+}
+
+#[test]
+fn monitor_shipment_with_negative_latlon() {
+    new_test_ext().execute_with(|| {
+        let owner = account_key(TEST_ORGANIZATION);
+        let shipment_id = TEST_SHIPMENT_ID.as_bytes().to_owned();
+        let now = 42;
+
+        // Store shipment w/ InTransit status
+        store_test_shipment::<Test>(
+            shipment_id.clone(),
+            owner,
+            ShipmentStatus::InTransit,
+            vec![TEST_PRODUCT_ID.as_bytes().to_owned()],
+            now,
+        );
+
+        // Store shipping registration & pickup events
+        store_test_event::<Test>(shipment_id.clone(), ShippingEventType::ShipmentRegistration);
+        store_test_event::<Test>(shipment_id.clone(), ShippingEventType::ShipmentPickup);
+
+        // Define location & readings for sensor reading
+        let location = ReadPoint {
+            // Rio de Janeiro, Brazil
+            latitude: I16F16::from_num(-22.9466369),
+            longitude: I16F16::from_num(-43.233472),
+        };
+
+        let readings = vec![Reading {
+            device_id: "14d453ea4bdf46bc8042".as_bytes().to_owned(),
+            reading_type: ReadingType::Temperature,
+            value: I16F16::from_num(20.123),
+            timestamp: now,
+        }];
+
+        // Dispatchable call succeeds
+        assert_ok!(ProductTracking::track_shipment(
+            Origin::signed(owner),
+            shipment_id.clone(),
+            ShippingOperation::Scan,
+            now,
+            Some(location.clone()),
+            Some(readings.clone())
+        ));
+
+        // Storage is correctly updated
+        assert_eq!(EventCount::get(), 3);
+        assert_eq!(
+            AllEvents::<Test>::get(3),
+            Some(ShippingEvent {
+                event_type: ShippingEventType::ShipmentScan,
+                shipment_id: shipment_id.clone(),
+                location: Some(location),
+                readings: readings,
+                timestamp: now,
+            })
+        );
+        assert_eq!(EventsOfShipment::get(&shipment_id), vec![1, 2, 3]);
+
+        // Shipment's status should still be 'InTransit'
+        assert_eq!(
+            ProductTracking::shipment_by_id(&shipment_id),
+            Some(Shipment {
+                id: shipment_id.clone(),
+                owner: owner,
+                status: ShipmentStatus::InTransit,
+                products: vec![TEST_PRODUCT_ID.as_bytes().to_owned()],
+                registered: now,
+                delivered: None
+            })
         );
     })
 }

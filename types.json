@@ -18,11 +18,17 @@
         "registered": "Moment",
         "delivered": "Option<Moment>"
     },
-    "ShippingEventId": "Identifier",
     "ShippingEventIndex": "u64",
     "DeviceId": "Identifier",
+    "ShippingOperation": {
+        "_enum": [
+            "ShipmentPickup",
+            "ShipmentDelivery"
+        ]
+    },
     "ShippingEventType": {
         "_enum": [
+            "ShipmentRegistration",
             "ShipmentPickup",
             "SensorReading",
             "ShipmentDelivery"
@@ -49,28 +55,10 @@
         "value": "Decimal"
     },
     "ShippingEvent": {
-        "id": "ShippingEventId",
         "event_type": "ShippingEventType",
         "shipment_id": "ShipmentId",
         "location": "Option<ReadPoint>",
         "readings": "Vec<Reading<Moment>>",
         "timestamp": "Moment"
-    },
-    "OcwTaskType": {
-        "_enum": [
-            "ShipmentRegistration",
-            "ShipmentPickup",
-            "ShipmentDelivery"
-        ]
-    },
-    "OcwTaskPayload": {
-        "_enum": [
-            "Shipment(Shipment<AccountId, Moment>)",
-            "ShippingEvent(ShippingEvent<Moment>)"
-        ]
-    },
-    "OcwTask": {
-        "type": "OcwTaskType",
-        "payload": "OcwTaskPayload<AccountId, Moment>"
     }
 }
