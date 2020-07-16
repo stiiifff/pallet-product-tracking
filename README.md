@@ -23,15 +23,14 @@ To register a shipment, one must send a transaction with a `productTracking.regi
 - `owner` as the Substrate Account representing the person (or function within an organization) responsible for the shipping process of the given shipment.
 - `products` which is a series of product IDs associated with the given shipment.
 
-### Record a shipping event
+### Tracking a shipment
 
-When a shipment has been registered, the related shipping events can be recorded on-chain by sending a `productTracking.recordEvent` extrinsic with an `event` argument, a data structure containing information about a shipping event for a given shipment:
-- `id` the event ID, an arbitrary numeric or alpha-numeric code that uniquely identifies the event (e.g. GUID).
-- `event_type` as the type of shipping event to be recorded: `ShipmentPickup`, `ShipmentDelivery` or `SensorReading`.
-- `shipment_id` is the Shipment ID which identifies which shipment the given event is related to.
-- `location` is an optional `ReadPoint` which contains the geographic position (`latitude` and `longitude`) where the event was captured.
-- `readings` which is a series of `Reading` that represent data captured by various sensors (humidity, Temperature, vibration, etc). A `Reading` includes a `device_id` (unique idenfitier of the device), a `reading_type` (type of sensor / measurement, see `ReadingType` enum), a `timestamp` (time at which the reading was recorded), and a `value` as the actual measurement recorded by the sensor.
+When a shipment has been registered, shippting events occuring during the shipment's lifecycle can be recorded on-chain by sending a `productTracking.trackShipment` extrinsic with the following argmuments:
+- `id` is the Shipment ID which identifies which shipment is being tracked.
+- `operation` as the business operation that took place during the shipping process: `Pickup`, `Scan` or `Deliver`.
 - `timestamp` as time (represented as UNIX time) at which the event was captured by an external system or sensor.
+- `location` is an optional `ReadPoint` which contains the geographic position (`latitude` and `longitude`) where the event was captured.
+- `readings` which is an optional series of `Reading` that represent data captured by various sensors (humidity, Temperature, vibration, etc). A `Reading` includes a `device_id` (unique idenfitier of the device), a `reading_type` (type of sensor / measurement, see `ReadingType` enum), a `timestamp` (time at which the reading was recorded), and a `value` as the actual measurement recorded by the sensor.
 
 ## Dependencies
 
@@ -41,7 +40,7 @@ This pallet does not depend on any externally defined traits.
 
 ### Pallets
 
-This pallet depends on on the [FRAME Timestamp pallet](https://docs.rs/crate/pallet-timestamp).
+This pallet depends on on the [FRAME Timestamp](https://docs.rs/crate/pallet-timestamp) & [Product registry](https://github.com/stiiifff/pallet-product-registry) pallets.
 
 ## Testing
 
@@ -88,7 +87,7 @@ impl product_tracking::Trait for Runtime {
 and include it in your `construct_runtime!` macro:
 
 ```rust
-ProductTracking: product_tracking::{Module, Call, Storage, Event<T>, ValidateUnsigned},
+ProductTracking: product_tracking::{Module, Call, Storage, Event<T>},
 ```
 
 ### Genesis Configuration
