@@ -1,6 +1,7 @@
-use codec::{ Decode, Encode };
+use codec::{Decode, Encode};
+use core::fmt;
 use fixed::types::I16F16;
-use frame_support::{ sp_runtime::RuntimeDebug, sp_std::prelude::* };
+use frame_support::{sp_runtime::RuntimeDebug, sp_std::prelude::*};
 use product_registry::ProductId;
 
 // Custom types
@@ -74,6 +75,15 @@ pub struct ShippingEvent<Moment> {
     pub timestamp: Moment,
 }
 
+impl<Moment> fmt::Display for ShippingEvent<Moment>
+where
+    Moment: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
 pub struct ReadPoint {
     pub latitude: Decimal,
@@ -97,45 +107,3 @@ pub struct Reading<Moment> {
     pub timestamp: Moment,
     pub value: Decimal,
 }
-
-// #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
-// pub enum OcwTaskType {
-//     ShipmentRegistration,
-//     ShipmentPickup,
-//     ShipmentDelivery,
-// }
-
-// impl OcwTaskType {
-//     pub fn from_shipping_event_type(
-//         shipping_event_type: &ShippingEventType,
-//     ) -> Result<OcwTaskType, &'static str> {
-//         match shipping_event_type {
-//             ShippingEventType::ShipmentRegistered => Ok(OcwTaskType::ShipmentRegistration),
-//             ShippingEventType::ShipmentPickup => Ok(OcwTaskType::ShipmentPickup),
-//             ShippingEventType::ShipmentDelivery => Ok(OcwTaskType::ShipmentDelivery),
-//             ShippingEventType::SensorReading => Err("Unsupported shipping event type conversion"),
-//         }
-//     }
-// }
-
-// #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
-// pub enum OcwTaskPayload<AccountId, Moment> {
-//     Shipment(Shipment<AccountId, Moment>),
-//     ShippingEvent(ShippingEvent<Moment>),
-// }
-
-// #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
-// pub struct OcwTask<AccountId, Moment> {
-//     r#type: OcwTaskType,
-//     payload: OcwTaskPayload<AccountId, Moment>,
-// }
-
-// impl<A, M> fmt::Display for OcwTask<A, M>
-// where
-//     A: fmt::Debug,
-//     M: fmt::Debug,
-// {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "{:?}", self)
-//     }
-// }

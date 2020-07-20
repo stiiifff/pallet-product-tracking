@@ -1,8 +1,11 @@
 {
-    "Identifier": "Vec<u8>",
-    "Decimal": "u32",
     "ProductId": "Identifier",
+    "Identifier": "Vec<u8>",
+    "Decimal": "i32",
     "ShipmentId": "Identifier",
+    "ShippingEventIndex": "u128",
+    "DeviceId": "Identifier",
+
     "ShipmentStatus": {
         "_enum": [
             "Pending",
@@ -18,21 +21,31 @@
         "registered": "Moment",
         "delivered": "Option<Moment>"
     },
-    "ShippingEventIndex": "u64",
-    "DeviceId": "Identifier",
     "ShippingOperation": {
         "_enum": [
-            "ShipmentPickup",
-            "ShipmentDelivery"
+            "Pickup",
+            "Scan",
+            "Deliver"
         ]
     },
     "ShippingEventType": {
         "_enum": [
             "ShipmentRegistration",
             "ShipmentPickup",
-            "SensorReading",
-            "ShipmentDelivery"
+            "ShipmentScan",
+            "ShipmentDeliver"
         ]
+    },
+    "ShippingEvent": {
+        "event_type": "ShippingEventType",
+        "shipment_id": "ShipmentId",
+        "location": "Option<ReadPoint>",
+        "readings": "Vec<Reading<Moment>>",
+        "timestamp": "Moment"
+    },
+    "ReadPoint": {
+        "latitude": "Decimal",
+        "longitude": "Decimal"
     },
     "ReadingType": {
         "_enum": [
@@ -44,21 +57,10 @@
             "Vibration"
         ]
     },
-    "ReadPoint": {
-        "latitude": "Decimal",
-        "longitude": "Decimal"
-    },
     "Reading": {
         "device_id": "DeviceId",
         "reading_type": "ReadingType",
         "timestamp": "Moment",
         "value": "Decimal"
-    },
-    "ShippingEvent": {
-        "event_type": "ShippingEventType",
-        "shipment_id": "ShipmentId",
-        "location": "Option<ReadPoint>",
-        "readings": "Vec<Reading<Moment>>",
-        "timestamp": "Moment"
     }
 }

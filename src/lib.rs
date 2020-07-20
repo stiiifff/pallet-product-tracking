@@ -1,9 +1,12 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use codec::alloc::string::ToString;
+use core::convert::TryInto;
 use frame_support::{
-    decl_error, decl_event, decl_module, decl_storage, dispatch, ensure, sp_std::prelude::*,
+    debug, decl_error, decl_event, decl_module, decl_storage, dispatch, ensure,
+    sp_runtime::offchain::storage::StorageValueRef, sp_std::prelude::*,
 };
-use frame_system::{ self as system, ensure_signed, offchain::SendTransactionTypes };
+use frame_system::{self as system, ensure_signed, offchain::SendTransactionTypes};
 
 use product_registry::ProductId;
 
@@ -65,6 +68,7 @@ decl_error! {
         ShipmentHasTooManyProducts,
         ShippingEventAlreadyExists,
         ShippingEventMaxExceeded,
+        OffchainWorkerAlreadyBusy
     }
 }
 
@@ -176,25 +180,64 @@ decl_module! {
             Ok(())
         }
 
-        // fn offchain_worker(_block_number: T::BlockNumber) {
-        //     if Self::ocw_tasks().len() == 0 { return; }
-        //     let mut tasks: Vec<OcwTask<T::AccountId, T::Moment>> = <OcwTasks<T>>::get();
+        fn offchain_worker(block_number: T::BlockNumber) {
+            if block_number == 0.into() {
+                return;
+            }
 
-        //     while tasks.len() > 0 {
-        //         let task = tasks.remove(0);
-        //         debug::info!("ocw task: {:?}", task);
-        //         let _ = Self::notify_listener(&task).map_err(|e| {
-        //             debug::error!("Error notifying listener. Err: {:?}", e);
-        //         });
-        //     }
+            // Acquire lock
+            let s_lock = match Self::ocw_acquire_lock(StorageValueRef::persistent(b"product_tracking_ocw::lock")) {
+                Ok(s_lock) => s_lock,
+                Err(e) => {
+                    debug::info!("[product_tracking_ocw] Aborting: {:?}", e); //debug
+                    return;
+                }
+            };
 
-        //     // Submit a transaction back on-chain to clear the task queue
-        //     let call = Call::clear_ocwtasks();
+            // Check last processed block
+            let last_processed_block_ref = StorageValueRef::persistent(b"product_tracking_ocw::last_proccessed_block");
+            let mut last_processed_block: u32 = match last_processed_block_ref.get::<T::BlockNumber>() {
+                Some(Some(last_proccessed_block)) if last_proccessed_block >= block_number => {
+                    debug::info!("[product_tracking_ocw] Skipping: Block {:?} has already been processed.", block_number);
+                    return;
+                },
+                Some(Some(last_proccessed_block)) => last_proccessed_block.try_into().ok().unwrap() as u32,
+                None => 0u32, //TODO: define a OCW_MAX_BACKTRACK_PERIOD param
+                _ => {
+                    debug::error!("[product_tracking_ocw] Error reading product_tracking_ocw::last_proccessed_block.");
+                    return;
+                 }
+            };
 
-        //     let _ = SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()).map_err(|e| {
-        //         debug::error!("Failed in submitting tx for clearing ocw taskqueue. Err: {:?}", e);
-        //     });
-        // }
+            let start_block = last_processed_block + 1;
+            let end_block = block_number.try_into().ok().unwrap() as u32;
+            for current_block in start_block..end_block {
+                debug::debug!("[product_tracking_ocw] Processing notifications for block {}", current_block);
+                let ev_indices = Self::ocw_notifications::<T::BlockNumber>(current_block.into());
+
+                let listener_results: Result<Vec<_>, _> = ev_indices.iter()
+                    .map(|idx| match Self::event_by_idx(idx) {
+                        Some(ev) => Self::notify_listener(&ev),
+                        None => Ok(())
+                    })
+                    .collect();
+
+                if let Err(err) = listener_results {
+                    debug::warn!("[product_tracking_ocw] notify_listener error: {}", err);
+                    break;
+                }
+                last_processed_block = current_block;
+            }
+
+            // Save last processed block
+            if last_processed_block >= start_block {
+                last_processed_block_ref.set(&last_processed_block);
+                debug::info!("[product_tracking_ocw] Notifications successfully processed up to block {}", last_processed_block);
+            }
+
+            // Release lock
+            Self::ocw_release_lock(s_lock);
+        }
     }
 }
 
@@ -208,32 +251,7 @@ impl<T: Trait> Module<T> {
         ShippingEventBuilder::<T::Moment>::default()
     }
 
-    // fn notify_listener(task: &OcwTask<T::AccountId, T::Moment>) -> Result<(), &'static str> {
-    //     let request =
-    //         sp_runtime::offchain::http::Request::post(&LISTENER_ENDPOINT, vec![task.to_string()]);
-
-    //     let timeout =
-    //         sp_io::offchain::timestamp().add(sp_runtime::offchain::Duration::from_millis(3000));
-
-    //     let pending = request
-    //         .add_header(&"Content-Type", &"text/plain")
-    //         .deadline(timeout) // Setting the timeout time
-    //         .send() // Sending the request out by the host
-    //         .map_err(|_| "http post request building error")?;
-
-    //     let response = pending
-    //         .try_wait(timeout)
-    //         .map_err(|_| "http post request sent error")?
-    //         .map_err(|_| "http post request sent error")?;
-
-    //     if response.code != 200 {
-    //         return Err("http response error");
-    //     }
-
-    //     Ok(())
-    // }
-
-    pub fn store_event(event: ShippingEvent<T::Moment>) -> Result<ShippingEventIndex, Error<T>> {
+    fn store_event(event: ShippingEvent<T::Moment>) -> Result<ShippingEventIndex, Error<T>> {
         let event_idx = EventCount::get()
             .checked_add(1)
             .ok_or(Error::<T>::ShippingEventMaxExceeded)?;
@@ -245,6 +263,7 @@ impl<T: Trait> Module<T> {
         Ok(event_idx)
     }
 
+    // (Public) Validation methods
     pub fn validate_identifier(id: &[u8]) -> Result<(), Error<T>> {
         // Basic identifier validation
         ensure!(!id.is_empty(), Error::<T>::InvalidOrMissingIdentifier);
@@ -270,5 +289,59 @@ impl<T: Trait> Module<T> {
             Error::<T>::ShipmentHasTooManyProducts,
         );
         Ok(())
+    }
+
+    // Offchain worker methods
+    fn notify_listener(ev: &ShippingEvent<T::Moment>) -> Result<(), &'static str> {
+        debug::info!("notifying listener: {:?}", ev);
+
+        let request =
+            sp_runtime::offchain::http::Request::post(&LISTENER_ENDPOINT, vec![ev.to_string()]);
+
+        let timeout =
+            sp_io::offchain::timestamp().add(sp_runtime::offchain::Duration::from_millis(3000));
+
+        let pending = request
+            .add_header(&"Content-Type", &"text/plain")
+            .deadline(timeout) // Setting the timeout time
+            .send() // Sending the request out by the host
+            .map_err(|_| "http post request building error")?;
+
+        let response = pending
+            .try_wait(timeout)
+            .map_err(|_| "http post request sent error")?
+            .map_err(|_| "http post request sent error")?;
+
+        if response.code != 200 {
+            return Err("http response error");
+        }
+
+        Ok(())
+    }
+
+    fn ocw_acquire_lock(s_lock: StorageValueRef) -> Result<StorageValueRef, Error<T>> {
+        // We are implementing a mutex lock here with `s_lock`
+        s_lock
+            .mutate(|s: Option<Option<bool>>| {
+                match s {
+                    // `s` can be one of the following:
+                    //   `None`: the lock has never been set. Treated as the lock is free
+                    //   `Some(None)`: unexpected case, treated it as AlreadyFetch
+                    //   `Some(Some(false))`: the lock is free
+                    //   `Some(Some(true))`: the lock is held
+
+                    // If the lock has never been set or is free (false), return true to execute `fetch_n_parse`
+                    None | Some(Some(false)) => Ok(true),
+
+                    // Otherwise, someone already hold the lock (true), we want to skip `fetch_n_parse`.
+                    // Covering cases: `Some(None)` and `Some(Some(true))`
+                    _ => Err(<Error<T>>::OffchainWorkerAlreadyBusy),
+                }
+            })
+            .map(|_| s_lock)
+    }
+
+    fn ocw_release_lock(s_lock: StorageValueRef) {
+        s_lock.set(&false);
     }
 }
