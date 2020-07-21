@@ -4,7 +4,12 @@ use codec::alloc::string::ToString;
 use core::convert::TryInto;
 use frame_support::{
     debug, decl_error, decl_event, decl_module, decl_storage, dispatch, ensure,
-    sp_runtime::offchain::storage::StorageValueRef, sp_std::prelude::*,
+    sp_std::prelude::*,
+    sp_runtime::offchain::{
+        self as rt_offchain,
+        storage::StorageValueRef,
+        storage_lock::{StorageLock, Time},
+    },
 };
 use frame_system::{self as system, ensure_signed, offchain::SendTransactionTypes};
 
@@ -27,6 +32,7 @@ use crate::builders::*;
 pub const IDENTIFIER_MAX_LENGTH: usize = 10;
 pub const SHIPMENT_MAX_PRODUCTS: usize = 10;
 pub const LISTENER_ENDPOINT: &'static str = "http://localhost:3005";
+pub const LOCK_TIMEOUT_EXPIRATION: u64 = 3000; // in milli-seconds
 
 pub trait Trait: system::Trait + timestamp::Trait + SendTransactionTypes<Call<Self>> {
     type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
@@ -181,62 +187,16 @@ decl_module! {
         }
 
         fn offchain_worker(block_number: T::BlockNumber) {
-            if block_number == 0.into() {
-                return;
-            }
+            // Acquiring the lock
+            let mut lock = StorageLock::<Time>::with_deadline(
+                b"product_tracking_ocw::lock",
+                rt_offchain::Duration::from_millis(LOCK_TIMEOUT_EXPIRATION)
+            );
 
-            // Acquire lock
-            let s_lock = match Self::ocw_acquire_lock(StorageValueRef::persistent(b"product_tracking_ocw::lock")) {
-                Ok(s_lock) => s_lock,
-                Err(e) => {
-                    debug::info!("[product_tracking_ocw] Aborting: {:?}", e); //debug
-                    return;
-                }
+            match lock.try_lock() {
+                Ok(_guard) => { Self::process_ocw_notifications(block_number); }
+                Err(_err) => { debug::info!("[product_tracking_ocw] lock is already acquired"); }
             };
-
-            // Check last processed block
-            let last_processed_block_ref = StorageValueRef::persistent(b"product_tracking_ocw::last_proccessed_block");
-            let mut last_processed_block: u32 = match last_processed_block_ref.get::<T::BlockNumber>() {
-                Some(Some(last_proccessed_block)) if last_proccessed_block >= block_number => {
-                    debug::info!("[product_tracking_ocw] Skipping: Block {:?} has already been processed.", block_number);
-                    return;
-                },
-                Some(Some(last_proccessed_block)) => last_proccessed_block.try_into().ok().unwrap() as u32,
-                None => 0u32, //TODO: define a OCW_MAX_BACKTRACK_PERIOD param
-                _ => {
-                    debug::error!("[product_tracking_ocw] Error reading product_tracking_ocw::last_proccessed_block.");
-                    return;
-                 }
-            };
-
-            let start_block = last_processed_block + 1;
-            let end_block = block_number.try_into().ok().unwrap() as u32;
-            for current_block in start_block..end_block {
-                debug::debug!("[product_tracking_ocw] Processing notifications for block {}", current_block);
-                let ev_indices = Self::ocw_notifications::<T::BlockNumber>(current_block.into());
-
-                let listener_results: Result<Vec<_>, _> = ev_indices.iter()
-                    .map(|idx| match Self::event_by_idx(idx) {
-                        Some(ev) => Self::notify_listener(&ev),
-                        None => Ok(())
-                    })
-                    .collect();
-
-                if let Err(err) = listener_results {
-                    debug::warn!("[product_tracking_ocw] notify_listener error: {}", err);
-                    break;
-                }
-                last_processed_block = current_block;
-            }
-
-            // Save last processed block
-            if last_processed_block >= start_block {
-                last_processed_block_ref.set(&last_processed_block);
-                debug::info!("[product_tracking_ocw] Notifications successfully processed up to block {}", last_processed_block);
-            }
-
-            // Release lock
-            Self::ocw_release_lock(s_lock);
         }
     }
 }
@@ -291,7 +251,51 @@ impl<T: Trait> Module<T> {
         Ok(())
     }
 
-    // Offchain worker methods
+    // --- Offchain worker methods ---
+
+    fn process_ocw_notifications(block_number: T::BlockNumber) {
+        // Check last processed block
+        let last_processed_block_ref = StorageValueRef::persistent(b"product_tracking_ocw::last_proccessed_block");
+        let mut last_processed_block: u32 = match last_processed_block_ref.get::<T::BlockNumber>() {
+            Some(Some(last_proccessed_block)) if last_proccessed_block >= block_number => {
+                debug::info!("[product_tracking_ocw] Skipping: Block {:?} has already been processed.", block_number);
+                return;
+            },
+            Some(Some(last_proccessed_block)) => last_proccessed_block.try_into().ok().unwrap() as u32,
+            None => 0u32, //TODO: define a OCW_MAX_BACKTRACK_PERIOD param
+            _ => {
+                debug::error!("[product_tracking_ocw] Error reading product_tracking_ocw::last_proccessed_block.");
+                return;
+             }
+        };
+
+        let start_block = last_processed_block + 1;
+        let end_block = block_number.try_into().ok().unwrap() as u32;
+        for current_block in start_block..end_block {
+            debug::debug!("[product_tracking_ocw] Processing notifications for block {}", current_block);
+            let ev_indices = Self::ocw_notifications::<T::BlockNumber>(current_block.into());
+
+            let listener_results: Result<Vec<_>, _> = ev_indices.iter()
+                .map(|idx| match Self::event_by_idx(idx) {
+                    Some(ev) => Self::notify_listener(&ev),
+                    None => Ok(())
+                })
+                .collect();
+
+            if let Err(err) = listener_results {
+                debug::warn!("[product_tracking_ocw] notify_listener error: {}", err);
+                break;
+            }
+            last_processed_block = current_block;
+        }
+
+        // Save last processed block
+        if last_processed_block >= start_block {
+            last_processed_block_ref.set(&last_processed_block);
+            debug::info!("[product_tracking_ocw] Notifications successfully processed up to block {}", last_processed_block);
+        }
+    }
+
     fn notify_listener(ev: &ShippingEvent<T::Moment>) -> Result<(), &'static str> {
         debug::info!("notifying listener: {:?}", ev);
 
@@ -317,31 +321,5 @@ impl<T: Trait> Module<T> {
         }
 
         Ok(())
-    }
-
-    fn ocw_acquire_lock(s_lock: StorageValueRef) -> Result<StorageValueRef, Error<T>> {
-        // We are implementing a mutex lock here with `s_lock`
-        s_lock
-            .mutate(|s: Option<Option<bool>>| {
-                match s {
-                    // `s` can be one of the following:
-                    //   `None`: the lock has never been set. Treated as the lock is free
-                    //   `Some(None)`: unexpected case, treated it as AlreadyFetch
-                    //   `Some(Some(false))`: the lock is free
-                    //   `Some(Some(true))`: the lock is held
-
-                    // If the lock has never been set or is free (false), return true to execute `fetch_n_parse`
-                    None | Some(Some(false)) => Ok(true),
-
-                    // Otherwise, someone already hold the lock (true), we want to skip `fetch_n_parse`.
-                    // Covering cases: `Some(None)` and `Some(Some(true))`
-                    _ => Err(<Error<T>>::OffchainWorkerAlreadyBusy),
-                }
-            })
-            .map(|_| s_lock)
-    }
-
-    fn ocw_release_lock(s_lock: StorageValueRef) {
-        s_lock.set(&false);
     }
 }
