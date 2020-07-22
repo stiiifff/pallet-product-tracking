@@ -3,7 +3,7 @@
 The Product Tracking pallet provides functionality for registering and tracking shipments, and monitoring their storage and transportation conditions, within a fictitious supply chain between various stakeholders.
 The high-level flow is shown below.
 
-![shipment flow](shipment_flow.png)
+![shipment flow](docs/shipment_flow.png)
 
 This pallet is part of the [Substrate Enterprise sample](https://github.com/gautamdhameja/substrate-enterprise-sample).
 
