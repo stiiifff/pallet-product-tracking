@@ -5,6 +5,7 @@ use core::convert::TryInto;
 use frame_support::{
     debug, decl_error, decl_event, decl_module, decl_storage, dispatch, ensure,
     sp_std::prelude::*,
+    traits::EnsureOrigin,
     sp_runtime::offchain::{
         self as rt_offchain,
         storage::StorageValueRef,
@@ -36,6 +37,7 @@ pub const LOCK_TIMEOUT_EXPIRATION: u64 = 3000; // in milli-seconds
 
 pub trait Trait: system::Trait + timestamp::Trait + SendTransactionTypes<Call<Self>> {
     type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
+    type CreateRoleOrigin: EnsureOrigin<Self::Origin>;
 }
 
 decl_storage! {
@@ -85,10 +87,8 @@ decl_module! {
 
         #[weight = 10_000]
         pub fn register_shipment(origin, id: ShipmentId, owner: T::AccountId, products: Vec<ProductId>) -> dispatch::DispatchResult {
+            T::CreateRoleOrigin::ensure_origin(origin.clone())?;
             let who = ensure_signed(origin)?;
-
-            // TODO: assuming owner is a DID representing an organization,
-            //       validate tx sender is owner or delegate of organization.
 
             // Validate format of shipment ID
             Self::validate_identifier(&id)?;
@@ -136,6 +136,7 @@ decl_module! {
 
         #[weight = 10_000]
         pub fn track_shipment(origin, id: ShipmentId, operation: ShippingOperation, timestamp: T::Moment, location: Option<ReadPoint>, readings: Option<Vec<Reading<T::Moment>>>) -> dispatch::DispatchResult {
+            T::CreateRoleOrigin::ensure_origin(origin.clone())?;
             let who = ensure_signed(origin)?;
 
             // Validate format of shipment ID

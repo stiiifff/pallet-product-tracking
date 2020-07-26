@@ -36,8 +36,10 @@ When a shipment has been registered, shippting events occuring during the shipme
 
 ### Traits
 
-This pallet does not depend on any externally defined traits.
-
+This pallet depends on on the [FRAME EnsureOrigin System trait]
+```
+frame_support::traits::EnsureOrigin;
+```
 ### Pallets
 
 This pallet depends on on the [FRAME Timestamp](https://docs.rs/crate/pallet-timestamp) & [Product registry](https://github.com/stiiifff/pallet-product-registry) pallets.
@@ -80,7 +82,8 @@ You should implement it's trait like so:
 ```rust
 /// Used for test_module
 impl product_tracking::Trait for Runtime {
-	type Event = Event;
+    type Event = Event;
+    type CreateRoleOrigin = Origin;
 }
 ```
 
