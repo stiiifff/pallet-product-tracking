@@ -1,6 +1,6 @@
+use crate::types::*;
 use frame_support::sp_std::prelude::*;
 use product_registry::ProductId;
-use crate::types::*;
 
 // --- ShipmentBuilder ---
 

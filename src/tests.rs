@@ -1,5 +1,5 @@
 use super::*;
-use crate::{types::*, mock::*, Error};
+use crate::{mock::*, types::*, Error};
 use fixed::types::I16F16;
 use frame_support::{assert_noop, assert_ok, dispatch};
 

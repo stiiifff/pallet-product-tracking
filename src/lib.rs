@@ -4,13 +4,13 @@ use codec::alloc::string::ToString;
 use core::convert::TryInto;
 use frame_support::{
     debug, decl_error, decl_event, decl_module, decl_storage, dispatch, ensure,
-    sp_std::prelude::*,
-    traits::EnsureOrigin,
     sp_runtime::offchain::{
         self as rt_offchain,
         storage::StorageValueRef,
         storage_lock::{StorageLock, Time},
     },
+    sp_std::prelude::*,
+    traits::EnsureOrigin,
 };
 use frame_system::{self as system, ensure_signed, offchain::SendTransactionTypes};
 
@@ -32,7 +32,7 @@ use crate::builders::*;
 // Note: these could also be passed as trait config parameters
 pub const IDENTIFIER_MAX_LENGTH: usize = 10;
 pub const SHIPMENT_MAX_PRODUCTS: usize = 10;
-pub const LISTENER_ENDPOINT: &'static str = "http://localhost:3005";
+pub const LISTENER_ENDPOINT: &str = "http://localhost:3005";
 pub const LOCK_TIMEOUT_EXPIRATION: u64 = 3000; // in milli-seconds
 
 pub trait Trait: system::Trait + timestamp::Trait + SendTransactionTypes<Call<Self>> {
@@ -166,7 +166,7 @@ decl_module! {
                 .of_type(operation.clone().into())
                 .for_shipment(id.clone())
                 .at_location(location)
-                .with_readings(readings.unwrap_or(vec![]))
+                .with_readings(readings.unwrap_or_default())
                 .at_time(timestamp)
                 .build();
 
@@ -256,30 +256,40 @@ impl<T: Trait> Module<T> {
 
     fn process_ocw_notifications(block_number: T::BlockNumber) {
         // Check last processed block
-        let last_processed_block_ref = StorageValueRef::persistent(b"product_tracking_ocw::last_proccessed_block");
+        let last_processed_block_ref =
+            StorageValueRef::persistent(b"product_tracking_ocw::last_proccessed_block");
         let mut last_processed_block: u32 = match last_processed_block_ref.get::<T::BlockNumber>() {
             Some(Some(last_proccessed_block)) if last_proccessed_block >= block_number => {
-                debug::info!("[product_tracking_ocw] Skipping: Block {:?} has already been processed.", block_number);
+                debug::info!(
+                    "[product_tracking_ocw] Skipping: Block {:?} has already been processed.",
+                    block_number
+                );
                 return;
-            },
-            Some(Some(last_proccessed_block)) => last_proccessed_block.try_into().ok().unwrap() as u32,
+            }
+            Some(Some(last_proccessed_block)) => {
+                last_proccessed_block.try_into().ok().unwrap() as u32
+            }
             None => 0u32, //TODO: define a OCW_MAX_BACKTRACK_PERIOD param
             _ => {
                 debug::error!("[product_tracking_ocw] Error reading product_tracking_ocw::last_proccessed_block.");
                 return;
-             }
+            }
         };
 
         let start_block = last_processed_block + 1;
         let end_block = block_number.try_into().ok().unwrap() as u32;
         for current_block in start_block..end_block {
-            debug::debug!("[product_tracking_ocw] Processing notifications for block {}", current_block);
+            debug::debug!(
+                "[product_tracking_ocw] Processing notifications for block {}",
+                current_block
+            );
             let ev_indices = Self::ocw_notifications::<T::BlockNumber>(current_block.into());
 
-            let listener_results: Result<Vec<_>, _> = ev_indices.iter()
+            let listener_results: Result<Vec<_>, _> = ev_indices
+                .iter()
                 .map(|idx| match Self::event_by_idx(idx) {
                     Some(ev) => Self::notify_listener(&ev),
-                    None => Ok(())
+                    None => Ok(()),
                 })
                 .collect();
 
@@ -293,7 +303,10 @@ impl<T: Trait> Module<T> {
         // Save last processed block
         if last_processed_block >= start_block {
             last_processed_block_ref.set(&last_processed_block);
-            debug::info!("[product_tracking_ocw] Notifications successfully processed up to block {}", last_processed_block);
+            debug::info!(
+                "[product_tracking_ocw] Notifications successfully processed up to block {}",
+                last_processed_block
+            );
         }
     }
 

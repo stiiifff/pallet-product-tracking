@@ -1,8 +1,12 @@
 // Creating mock runtime here
 
 use crate::{Call, Module, Trait};
-use frame_support::{impl_outer_event, impl_outer_origin, parameter_types, weights::Weight};
+use core::marker::PhantomData;
+use frame_support::{
+    impl_outer_event, impl_outer_origin, parameter_types, traits::EnsureOrigin, weights::Weight,
+};
 use frame_system as system;
+use frame_system::RawOrigin;
 use sp_core::{
     // offchain::{
     //     testing::{self, OffchainState, PoolState},
@@ -36,6 +40,7 @@ impl_outer_event! {
 // configuration traits of pallets we want to use.
 #[derive(Clone, Eq, PartialEq)]
 pub struct Test;
+
 parameter_types! {
     pub const BlockHashCount: u64 = 250;
     pub const MaximumBlockWeight: Weight = 1024;
@@ -78,11 +83,24 @@ impl timestamp::Trait for Test {
 
 impl Trait for Test {
     type Event = TestEvent;
+    type CreateRoleOrigin = MockOrigin<Test>;
 }
 
 pub type ProductTracking = Module<Test>;
 pub type System = system::Module<Test>;
 pub type Timestamp = timestamp::Module<Test>;
+
+pub struct MockOrigin<T>(PhantomData<T>);
+
+impl<T: Trait> EnsureOrigin<T::Origin> for MockOrigin<T> {
+    type Success = T::AccountId;
+    fn try_origin(o: T::Origin) -> Result<Self::Success, T::Origin> {
+        o.into().and_then(|o| match o {
+            RawOrigin::Signed(ref who) => Ok(who.clone()),
+            r => Err(T::Origin::from(r)),
+        })
+    }
+}
 
 // This function basically just builds a genesis storage key/value store according to
 // our desired mockup.
