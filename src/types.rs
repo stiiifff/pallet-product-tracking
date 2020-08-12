@@ -104,6 +104,7 @@ pub enum ReadingType {
 pub struct Reading<Moment> {
     pub device_id: DeviceId,
     pub reading_type: ReadingType,
+    #[codec(compact)]
     pub timestamp: Moment,
     pub value: Decimal,
 }

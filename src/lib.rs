@@ -1,3 +1,5 @@
+//! # Substrate Enterprise Sample - Product Tracking pallet
+
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use codec::alloc::string::ToString;
@@ -135,7 +137,14 @@ decl_module! {
         }
 
         #[weight = 10_000]
-        pub fn track_shipment(origin, id: ShipmentId, operation: ShippingOperation, timestamp: T::Moment, location: Option<ReadPoint>, readings: Option<Vec<Reading<T::Moment>>>) -> dispatch::DispatchResult {
+        pub fn track_shipment(
+            origin,
+            id: ShipmentId,
+            operation: ShippingOperation,
+            #[compact] timestamp: T::Moment,
+            location: Option<ReadPoint>,
+            readings: Option<Vec<Reading<T::Moment>>>
+        ) -> dispatch::DispatchResult {
             T::CreateRoleOrigin::ensure_origin(origin.clone())?;
             let who = ensure_signed(origin)?;
 
