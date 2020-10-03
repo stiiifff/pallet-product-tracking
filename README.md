@@ -61,9 +61,8 @@ To add this pallet to your runtime, simply include the following to your runtime
 ```TOML
 [dependencies.product-tracking]
 default_features = false
-git = 'https://github.com/stiiifff/pallet-product-tracking.git'
 package = 'pallet-product-tracking'
-version = '2.0.0-rc4'
+version = '2.0.0'
 ```
 
 and update your runtime's `std` feature to include this pallet:
